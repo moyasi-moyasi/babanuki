@@ -1,0 +1,3815 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P ババ抜き (Old Maid) - 完全ローカルWebRTC対戦</title>
+  <style>
+    :root {
+      --bg-dark: #0b1120;
+      --panel-bg: rgba(17, 24, 39, 0.92);
+      --card-bg: rgba(30, 41, 59, 0.85);
+      --border-color: rgba(255, 255, 255, 0.12);
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #10b981;
+      --success-hover: #059669;
+      --accent: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --felt-green: #064e3b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(circle at 50% 20%, #1e293b 0%, var(--bg-dark) 100%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Header */
+    header {
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .badge-webrtc {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      padding: 1.5rem;
+      max-width: 1080px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Screen Views */
+    .screen {
+      display: none;
+      width: 100%;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    .screen.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cards & Containers */
+    .glass-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(12px);
+      margin-bottom: 1.5rem;
+    }
+
+    /* Buttons */
+    button {
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.625rem 1.125rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: var(--success-hover); transform: translateY(-1px); }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.18); }
+
+    .btn-subtle {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border-color);
+    }
+    .btn-subtle:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
+
+    /* Visual Feedback State Animations */
+    .btn-feedback-success {
+      background: #10b981 !important;
+      color: #ffffff !important;
+      transform: scale(1.03);
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.6);
+    }
+
+    .btn-feedback-prompt {
+      background: #f59e0b !important;
+      color: #111827 !important;
+      transform: scale(1.02);
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+    }
+
+    /* Form Fields */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 0.4rem;
+    }
+
+    .form-input, .form-select {
+      width: 100%;
+      padding: 0.625rem 0.875rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #f8fafc;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus, .form-select:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    /* Signaling Textareas & Wrappers */
+    .textarea-action-wrapper {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .signaling-textarea {
+      width: 100%;
+      height: 72px;
+      background: #090e17;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #93c5fd;
+      padding: 0.625rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      resize: none;
+      outline: none;
+    }
+
+    .signaling-textarea:focus {
+      border-color: #3b82f6;
+    }
+
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    /* Role Switcher Tabs */
+    .role-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 0.35rem;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+    }
+
+    .role-tab-btn {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .role-tab-btn.active {
+      background: var(--primary);
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+
+    /* Slot Card (Host Multi-Client Slots) */
+    .slot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .slot-card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .slot-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .slot-badge {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    .badge-empty { background: #334155; color: #94a3b8; }
+    .badge-connecting { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6; }
+    .badge-connected { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; }
+
+    /* Modals */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1.5rem;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-card {
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      max-width: 440px;
+      width: 100%;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .qr-canvas {
+      background: #ffffff;
+      padding: 8px;
+      border-radius: 10px;
+      margin: 1rem auto;
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    .camera-viewport {
+      position: relative;
+      width: 100%;
+      height: 240px;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 1rem 0;
+    }
+
+    .camera-viewport video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .camera-reticle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 170px;
+      height: 170px;
+      border: 3px dashed #10b981;
+      border-radius: 12px;
+      pointer-events: none;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+    }
+
+    /* 4-Quadrant Play Screen Layout (Milestone 3 Preview & Structure) */
+    .play-layout {
+      display: grid;
+      grid-template-columns: 240px 1fr 280px;
+      grid-template-rows: auto 1fr auto;
+      gap: 1rem;
+      min-height: 580px;
+    }
+
+    .quadrant-left {
+      grid-column: 1;
+      grid-row: 1 / span 3;
+      background: rgba(15, 23, 42, 0.7);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      padding: 1rem;
+    }
+
+    .quadrant-top-center {
+      grid-column: 2;
+      grid-row: 1;
+      background: rgba(15, 23, 42, 0.7);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      padding: 1rem;
+    }
+
+    .quadrant-top-right {
+      grid-column: 3;
+      grid-row: 1 / span 2;
+      background: rgba(15, 23, 42, 0.7);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      padding: 1rem;
+    }
+
+    .quadrant-bottom {
+      grid-column: 2 / span 2;
+      grid-row: 3;
+      background: rgba(15, 23, 42, 0.85);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      padding: 1.25rem;
+    }
+
+    /* Card Representation */
+    .card {
+      display: inline-flex;
+      position: relative;
+      width: 58px;
+      height: 84px;
+      border-radius: 6px;
+      margin: 4px;
+      font-weight: bold;
+      user-select: none;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .card-face-up {
+      background: #ffffff;
+      color: #111827;
+      border: 1px solid #d1d5db;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+    }
+
+    .card-face-up.card-heart, .card-face-up.card-diamond {
+      color: #dc2626;
+    }
+
+    .card-face-up.card-joker {
+      color: #7c3aed;
+      border-color: #8b5cf6;
+      background: #faf5ff;
+    }
+
+    .card-back {
+      background: repeating-linear-gradient(
+        45deg,
+        #1e3a8a,
+        #1e3a8a 6px,
+        #172554 6px,
+        #172554 12px
+      );
+      border: 2px solid #ffffff;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+      cursor: pointer;
+    }
+
+    .card-back:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Pulsating Indicator Dot (目印の丸) */
+    .indicator-dot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 22px;
+      height: 22px;
+      background: #ef4444;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 12px #ef4444;
+      animation: pulseIndicator 0.8s infinite alternate;
+      pointer-events: none;
+    }
+
+    @keyframes pulseIndicator {
+      from { transform: translate(-50%, -50%) scale(0.9); opacity: 0.85; }
+      to { transform: translate(-50%, -50%) scale(1.3); opacity: 1; box-shadow: 0 0 18px #f87171; }
+    }
+
+    /* Discarded Pair list */
+    .discarded-pair {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      margin: 2px 4px;
+    }
+
+    /* Status Banner */
+    .status-msg {
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 0.5rem;
+      border-radius: 6px;
+    }
+    .status-msg.success { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .status-msg.warning { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .status-msg.danger { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+    /* Player Status & Rankings */
+    .player-item {
+      transition: all 0.2s ease;
+    }
+    .player-item.active-turn {
+      border-color: #3b82f6 !important;
+      background: rgba(37, 99, 235, 0.25) !important;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+    }
+    .player-item.target-turn {
+      border-color: #f59e0b !important;
+      background: rgba(245, 158, 11, 0.2) !important;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+    }
+    .rank-row {
+      transition: all 0.2s ease;
+    }
+    .pulsating-circle {
+      animation: pulseIndicator 0.8s infinite alternate;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <span style="font-size: 1.5rem;">🃏</span>
+      <h1>ババ抜き P2P Online</h1>
+      <span class="badge-webrtc">完全サーバーレス P2P</span>
+    </div>
+    <div id="header-status" style="font-size: 0.8rem; color: var(--text-muted);">
+      オフライン / ローカル動作中
+    </div>
+  </header>
+
+  <main>
+    <!-- ===================================================================== -->
+    <!-- 1. TOP SCREEN (Role selection, Room creation & Join Signaling)         -->
+    <!-- ===================================================================== -->
+    <section id="screen-top" class="screen active">
+      <div class="glass-card">
+        <!-- Role Tabs -->
+        <div class="role-tabs">
+          <button id="btn-role-host" class="role-tab-btn active" onclick="switchRole('host')">
+            👑 ホストとして部屋を作る
+          </button>
+          <button id="btn-role-join" class="role-tab-btn" onclick="switchRole('join')">
+            🙋 参加者として参加する
+          </button>
+        </div>
+
+        <!-- Role 1: HOST PANEL -->
+        <div id="panel-host">
+          <div class="form-group">
+            <label class="form-label">ホストのプレイヤー名:</label>
+            <input type="text" id="host-name" class="form-input" value="ホスト" placeholder="お名前を入力">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">ペア成立ルール (ゲーム開始前に選択):</label>
+            <select id="select-rule" class="form-select">
+              <option value="1">ルール①：数字のみ一致で捨てる (標準ルール)</option>
+              <option value="2">ルール②：マークの色(赤/黒)＋数字一致で捨てる (高難度)</option>
+            </select>
+          </div>
+
+          <button id="btn-create-room" class="btn btn-primary" style="width: 100%; padding: 0.85rem; font-size: 1rem;" onclick="handleCreateRoom()">
+            🏠 部屋を開設して接続コードを生成する
+          </button>
+
+          <!-- Host Multi-Client Slot Manager -->
+          <div id="host-slot-section" style="display: none; margin-top: 1.5rem;">
+            <h3 style="font-size: 1rem; color: #cbd5e1; margin-bottom: 0.5rem;">参加者接続スロット (最大5人まで接続可能):</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+              参加者に各スロットの「接続コード」を共有（またはQRコードを読み取らせて）、相手から返送された「Answerコード」を貼り付けてください。
+            </p>
+
+            <div class="slot-grid" id="host-slots-container">
+              <!-- Dynamically populated slots -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Role 2: CLIENT JOIN PANEL -->
+        <div id="panel-join" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">あなたのプレイヤー名:</label>
+            <input type="text" id="client-name" class="form-input" value="ゲスト" placeholder="お名前を入力">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">ホストの接続コード (貼り付け または QR読取):</label>
+            <div class="textarea-action-wrapper">
+              <textarea id="sdp-offer" class="signaling-textarea" placeholder="ホストから受け取った接続コードをここに貼り付け"></textarea>
+              <div class="action-row">
+                <button id="btn-paste-offer" class="btn btn-secondary" onclick="handlePasteOffer()">
+                  📥 貼り付け
+                </button>
+                <button id="btn-scan-offer-qr" class="btn btn-secondary" onclick="openScannerModal('sdp-offer')">
+                  📷 QRカメラ読取
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <button id="btn-join-room" class="btn btn-primary" style="width: 100%; padding: 0.85rem;" onclick="handleClientCreateAnswer()">
+            ⚡ 応答コード(Answer)を生成する
+          </button>
+
+          <div id="client-answer-group" style="display: none; margin-top: 1.5rem;">
+            <div class="form-group">
+              <label class="form-label">あなたの応答コード (ホストに伝達):</label>
+              <div class="textarea-action-wrapper">
+                <textarea id="sdp-answer" class="signaling-textarea" readonly placeholder="Answerコード生成中..."></textarea>
+                <div class="action-row">
+                  <button id="btn-copy-code" class="btn btn-primary" onclick="handleCopyClientAnswer()">
+                    📋 コピー
+                  </button>
+                  <button id="btn-show-answer-qr" class="btn btn-secondary" onclick="handleShowAnswerQR()">
+                    📷 QRコード表示
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div id="client-signaling-feedback" class="status-msg warning">
+              ホストがあなたの応答コードを受け取ると、自動的にロビーへ入場します...
+            </div>
+          </div>
+        </div>
+
+        <div id="top-feedback-banner" class="status-msg" style="display: none;"></div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 2. LOBBY SCREEN (Waiting, Ready toggle, Room members)                  -->
+    <!-- ===================================================================== -->
+    <section id="screen-lobby" class="screen">
+      <div class="glass-card">
+        <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">🚪 待機ロビー</h2>
+        <div id="lobby-rule-badge" style="font-size: 0.8rem; color: #93c5fd; margin-bottom: 1rem;">
+          採用ルール: 数字のみ一致
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">参加メンバー一覧:</label>
+          <div id="lobby-player-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <!-- Player items -->
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+          <button id="btn-ready" class="btn btn-secondary" style="flex: 1;" onclick="handleToggleReady()">
+            👍 準備完了 (Ready)
+          </button>
+          <button id="btn-start-game" class="btn btn-success" style="flex: 1; display: none;" onclick="handleStartGameClick()">
+            🚀 ゲーム開始 (Host Only)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 3. PLAY SCREEN (4-Quadrant layout: My Hand, Target Hand, Discards)    -->
+    <!-- ===================================================================== -->
+    <section id="screen-play" class="screen">
+      <div class="play-layout">
+        <!-- Quadrant 4 (Left): Player Progress List -->
+        <div id="player-progress-list" class="quadrant-left player-progress-container">
+          <h3 style="font-size: 0.9rem; font-weight: 700; color: #94a3b8; margin-bottom: 0.75rem;">プレイヤー状況</h3>
+          <div id="players-status-list"></div>
+        </div>
+
+        <!-- Quadrant 3 (Top-Center): Discard History -->
+        <div id="discard-history" class="quadrant-top-center discard-history-container">
+          <h3 style="font-size: 0.9rem; font-weight: 700; color: #94a3b8; margin-bottom: 0.5rem;">捨て札履歴 (ペア成立一覧)</h3>
+          <div id="discard-pairs-list" style="min-height: 48px; max-height: 120px; overflow-y: auto;"></div>
+        </div>
+
+        <!-- Quadrant 2 (Top-Right): Target Opponent Hand -->
+        <div id="target-hand" class="quadrant-top-right target-hand-container">
+          <h3 id="target-player-title" style="font-size: 0.9rem; font-weight: 700; color: #94a3b8; margin-bottom: 0.5rem;">
+            相手の手札 (引く対象)
+          </h3>
+          <div id="target-cards-container" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
+        </div>
+
+        <!-- Quadrant 1 (Bottom): My Hand -->
+        <div id="my-hand" class="quadrant-bottom my-hand-container">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <h3 style="font-size: 0.95rem; font-weight: 700; color: #f8fafc;">あなたの手札</h3>
+            <span id="turn-indicator-badge" class="badge-webrtc">待機中</span>
+          </div>
+          <div id="my-cards-container" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 4. RESULT SCREEN                                                      -->
+    <!-- ===================================================================== -->
+    <section id="screen-result" class="screen">
+      <div class="glass-card" style="text-align: center;">
+        <h2 style="font-size: 1.5rem; font-weight: 800; margin-bottom: 1rem;">🏁 ゲーム終了</h2>
+        <div id="loser-display" style="font-size: 1.1rem; color: #f87171; margin-bottom: 1.5rem;"></div>
+        <div id="ranking-list" style="max-width: 400px; margin: 0 auto 1.5rem auto; text-align: left;"></div>
+        <button class="btn btn-primary" onclick="showScreen('screen-top')">トップ画面へ戻る</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ======================================================================= -->
+  <!-- MODALS: QR Code Display Modal & Camera QR Scanner Modal                 -->
+  <!-- ======================================================================= -->
+
+  <!-- Modal 1: QR Code Canvas Display -->
+  <div id="modal-qr" class="modal-overlay" onclick="closeQRModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <h3 style="font-size: 1.1rem; font-weight: 700; color: #f8fafc;">QRコード接続</h3>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+        相手のカメラやスマートフォンでこのQRコードを読み取ってください。
+      </p>
+      <canvas id="modal-qr-canvas" class="qr-canvas"></canvas>
+      <button class="btn btn-secondary" style="width: 100%; margin-top: 0.5rem;" onclick="closeQRModal()">
+        閉じる
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal 2: Camera Scanner Modal -->
+  <div id="modal-scanner" class="modal-overlay" onclick="closeScannerModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <h3 style="font-size: 1.1rem; font-weight: 700; color: #f8fafc;">📷 QRコードスキャナー</h3>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+        枠内に相手のQRコードをかざしてください。
+      </p>
+
+      <div class="camera-viewport">
+        <video id="scanner-video" playsinline muted></video>
+        <div class="camera-reticle"></div>
+      </div>
+
+      <div id="scanner-error-msg" class="status-msg danger" style="display: none; width: 100%;"></div>
+
+      <div style="display: flex; flex-direction: column; gap: 0.5rem; width: 100%;">
+        <label class="btn btn-secondary" style="cursor: pointer; width: 100%;">
+          📁 写真・画像ファイルから読み取り
+          <input type="file" id="scanner-file-input" accept="image/*" style="display: none;" onchange="handleFileScan(event)">
+        </label>
+        <button class="btn btn-subtle" style="width: 100%;" onclick="closeScannerModal()">
+          キャンセル
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- INLINED JAVASCRIPT: Verified M1 Components & Controller Engine          -->
+  <!-- ======================================================================= -->
+  <script>
+    // -------------------------------------------------------------------------
+    // BabanukiEngine: Core Deck, Shuffle & Dealing Math
+    // -------------------------------------------------------------------------
+    class BabanukiEngine {
+      static SUITS = ['spade', 'heart', 'diamond', 'club'];
+      static RANKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+
+      static isJoker(card) {
+        return Boolean(card && (card.isJoker || card.rank === 0 || card.id === 'JOKER' || card.suit === 'joker'));
+      }
+
+      static getSuitColor(suit) {
+        if (suit === 'spade' || suit === 'club') return 'black';
+        if (suit === 'heart' || suit === 'diamond') return 'red';
+        return null;
+      }
+
+      static createDeck() {
+        const deck = [];
+        for (const suit of this.SUITS) {
+          const color = this.getSuitColor(suit);
+          for (const rank of this.RANKS) {
+            deck.push({
+              id: `${suit[0].toUpperCase()}-${rank}`,
+              rank,
+              suit,
+              color,
+              isJoker: false
+            });
+          }
+        }
+        deck.push({
+          id: 'JOKER',
+          rank: 0,
+          suit: null,
+          color: null,
+          isJoker: true
+        });
+        return deck;
+      }
+
+      static shuffle(deck) {
+        if (!Array.isArray(deck)) throw new Error('Invalid deck: must be an array');
+        const arr = [...deck];
+        let cryptoObj;
+        if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+          cryptoObj = window.crypto;
+        } else if (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.getRandomValues) {
+          cryptoObj = globalThis.crypto;
+        }
+
+        const uint32 = new Uint32Array(1);
+
+        for (let i = arr.length - 1; i > 0; i--) {
+          const range = i + 1;
+          let j;
+          if (cryptoObj && cryptoObj.getRandomValues) {
+            const maxValid = 0x100000000 - (0x100000000 % range);
+            let randVal;
+            do {
+              cryptoObj.getRandomValues(uint32);
+              randVal = uint32[0];
+            } while (randVal >= maxValid);
+            j = randVal % range;
+          } else {
+            j = Math.floor(Math.random() * range);
+          }
+          const temp = arr[i];
+          arr[i] = arr[j];
+          arr[j] = temp;
+        }
+        return arr;
+      }
+
+      static deal(numPlayers, customDeck = null) {
+        if (!Number.isInteger(numPlayers) || numPlayers < 2 || numPlayers > 6) {
+          throw new Error(`Invalid player count: ${numPlayers}. Must be between 2 and 6.`);
+        }
+        const deck = customDeck ? [...customDeck] : this.shuffle(this.createDeck());
+        if (deck.length !== 53) {
+          throw new Error(`Invalid deck length: expected 53, got ${deck.length}`);
+        }
+
+        const hands = Array.from({ length: numPlayers }, () => []);
+        const q = Math.floor(53 / numPlayers);
+        const r = 53 % numPlayers;
+
+        let cardIdx = 0;
+        for (let i = 0; i < numPlayers; i++) {
+          const count = (i < r) ? q + 1 : q;
+          for (let c = 0; c < count; c++) {
+            hands[i].push(deck[cardIdx++]);
+          }
+        }
+        return hands;
+      }
+
+      static findPairs(hand, rule) {
+        if (rule !== 1 && rule !== 2) {
+          throw new Error(`Invalid rule: ${rule}. Must be 1 (Rank-only) or 2 (Color+Rank).`);
+        }
+
+        const pairs = [];
+        const remaining = [];
+        const groups = new Map();
+
+        for (const card of hand) {
+          if (this.isJoker(card)) {
+            remaining.push(card);
+            continue;
+          }
+          const color = this.getSuitColor(card.suit) || card.color;
+          const key = (rule === 1) ? String(card.rank) : `${card.rank}_${color}`;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(card);
+        }
+
+        for (const cards of groups.values()) {
+          while (cards.length >= 2) {
+            const c1 = cards.pop();
+            const c2 = cards.pop();
+            pairs.push([c1, c2]);
+          }
+          if (cards.length === 1) remaining.push(cards[0]);
+        }
+        return { pairs, remaining };
+      }
+
+      static evaluateDraw(hand, drawnCard, rule) {
+        if (!drawnCard || typeof drawnCard !== 'object') throw new Error('Invalid drawnCard');
+        if (this.isJoker(drawnCard)) {
+          return { newHand: [...hand, drawnCard], discardedPair: null };
+        }
+
+        const drawnColor = this.getSuitColor(drawnCard.suit) || drawnCard.color;
+        let matchIdx = -1;
+        for (let i = 0; i < hand.length; i++) {
+          const c = hand[i];
+          if (this.isJoker(c)) continue;
+          if (rule === 1) {
+            if (c.rank === drawnCard.rank) { matchIdx = i; break; }
+          } else {
+            const cColor = this.getSuitColor(c.suit) || c.color;
+            if (c.rank === drawnCard.rank && cColor === drawnColor) { matchIdx = i; break; }
+          }
+        }
+        if (matchIdx !== -1) {
+          const matchedCard = hand[matchIdx];
+          const newHand = hand.filter((_, idx) => idx !== matchIdx);
+          return { newHand, discardedPair: [matchedCard, drawnCard] };
+        }
+        return { newHand: [...hand, drawnCard], discardedPair: null };
+      }
+
+      static getNextTurn(players, currentActiveIndex) {
+        const n = players.length;
+        const activePlayers = players.filter(p => p.cardCount > 0);
+        if (activePlayers.length <= 1) {
+          return { nextActiveIndex: -1, nextTargetIndex: -1, isGameOver: true };
+        }
+        let nextActive = (currentActiveIndex + 1) % n;
+        while (players[nextActive].cardCount === 0) {
+          nextActive = (nextActive + 1) % n;
+        }
+        let nextTarget = (nextActive + 1) % n;
+        while (players[nextTarget].cardCount === 0 && nextTarget !== nextActive) {
+          nextTarget = (nextTarget + 1) % n;
+        }
+        return { nextActiveIndex: nextActive, nextTargetIndex: nextTarget, isGameOver: false };
+      }
+
+      static resolveGame(players) {
+        const remaining = players.filter(p => p.cardCount > 0);
+        if (remaining.length === 1) {
+          return { isGameOver: true, loserId: remaining[0].id };
+        }
+        return { isGameOver: remaining.length === 0, loserId: null };
+      }
+
+      static sanitizeForPeers(playerPrivateState) {
+        return {
+          id: playerPrivateState.id,
+          name: playerPrivateState.name,
+          cardCount: playerPrivateState.hand ? playerPrivateState.hand.length : playerPrivateState.cardCount,
+          isHost: Boolean(playerPrivateState.isHost),
+          ready: Boolean(playerPrivateState.ready),
+          status: playerPrivateState.status || 'playing',
+          finishRank: playerPrivateState.finishRank || null
+        };
+      }
+
+      static renderOpponentHandDOM(cardCount) {
+        const cards = [];
+        for (let i = 0; i < cardCount; i++) {
+          cards.push(`<div class="card card-back" data-card-index="${i}"></div>`);
+        }
+        return `<div class="opponent-hand" data-card-count="${cardCount}">${cards.join('')}</div>`;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // LocalHandManager: Zero-Knowledge Hand Encapsulation
+    // -------------------------------------------------------------------------
+    class LocalHandManager {
+      #cards = [];
+      #rule = 1;
+      #status = 'waiting';
+      #finishRank = null;
+      #playerId = null;
+
+      constructor(playerId, rule = 1) {
+        this.#playerId = playerId;
+        this.#rule = (rule === 2) ? 2 : 1;
+      }
+
+      get playerId() { return this.#playerId; }
+      get rule() { return this.#rule; }
+      setRule(rule) { this.#rule = (rule === 2) ? 2 : 1; }
+      getCardCount() { return this.#cards.length; }
+      isFinished() { return this.#cards.length === 0; }
+      getFinishRank() { return this.#finishRank; }
+      setFinishRank(rank) { this.#finishRank = rank; this.#status = 'finished'; }
+      getStatus() { return this.#status; }
+
+      initFromDeal(dealSlice, rule) {
+        if (!Array.isArray(dealSlice)) throw new Error('Invalid deal slice: must be an array');
+        if (rule) this.setRule(rule);
+        this.#status = 'playing';
+        const initialShuffled = BabanukiEngine.shuffle(dealSlice);
+        const { pairs, remaining } = BabanukiEngine.findPairs(initialShuffled, this.#rule);
+        this.#cards = BabanukiEngine.shuffle(remaining);
+        if (this.#cards.length === 0) this.#status = 'finished';
+        return {
+          discardedPairs: pairs,
+          remainingCount: this.#cards.length,
+          isFinished: this.isFinished()
+        };
+      }
+
+      giveCardAt(cardIndex) {
+        if (!Number.isInteger(cardIndex) || cardIndex < 0 || cardIndex >= this.#cards.length) {
+          throw new Error(`Invalid cardIndex ${cardIndex}: out of bounds [0, ${this.#cards.length - 1}]`);
+        }
+        const [card] = this.#cards.splice(cardIndex, 1);
+        const isFinished = (this.#cards.length === 0);
+        if (isFinished) this.#status = 'finished';
+        return { card, remainingCount: this.#cards.length, isFinished };
+      }
+
+      receiveDrawnCard(drawnCard) {
+        if (!drawnCard || typeof drawnCard !== 'object') throw new Error('Invalid drawnCard');
+        const drawResult = BabanukiEngine.evaluateDraw(this.#cards, drawnCard, this.#rule);
+        this.#cards = drawResult.newHand;
+        const isFinished = (this.#cards.length === 0);
+        if (isFinished) this.#status = 'finished';
+        return {
+          isPair: drawResult.discardedPair !== null,
+          discardedPair: drawResult.discardedPair,
+          remainingCount: this.#cards.length,
+          isFinished
+        };
+      }
+
+      shuffleLocalHand() {
+        this.#cards = BabanukiEngine.shuffle(this.#cards);
+        return this.#cards.length;
+      }
+
+      getLocalCards() {
+        return this.#cards.map(c => ({ ...c }));
+      }
+
+      getPublicState() {
+        return {
+          id: this.#playerId,
+          cardCount: this.#cards.length,
+          status: this.#status,
+          finishRank: this.#finishRank
+        };
+      }
+
+      toJSON() {
+        return this.getPublicState();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // TurnManager: Authoritative Turn Engine & Win Progression Manager
+    // -------------------------------------------------------------------------
+    class TurnManager {
+      constructor(players, hostId) {
+        if (!Array.isArray(players) || players.length === 0) {
+          throw new Error('TurnManager requires non-empty array of players');
+        }
+        this.players = players.map(p => ({
+          id: p.id,
+          name: p.name || p.id,
+          cardCount: typeof p.cardCount === 'number' ? p.cardCount : 0,
+          status: p.status || 'playing',
+          finishRank: p.finishRank || null
+        }));
+        this.hostId = hostId;
+        this.turnOrder = this.players.map(p => p.id);
+        this.currentActiveIndex = -1;
+        this.finishRankCounter = 1;
+        this.rankings = [];
+        this.isGameOver = false;
+        this.loserId = null;
+      }
+
+      isEligible(player) {
+        return Boolean(
+          player &&
+          player.cardCount > 0 &&
+          player.status !== 'disconnected' &&
+          player.finishRank === null
+        );
+      }
+
+      getEligiblePlayers() {
+        return this.players.filter(p => this.isEligible(p));
+      }
+
+      getPlayer(playerId) {
+        return this.players.find(p => p.id === playerId);
+      }
+
+      processInitialDiscards(initialCounts) {
+        for (const item of initialCounts) {
+          const p = this.getPlayer(item.playerId);
+          if (p) p.cardCount = item.remainingCount;
+        }
+        const instantFinisherIds = [];
+        for (const p of this.players) {
+          if (p.cardCount === 0 && p.finishRank === null && p.status !== 'disconnected') {
+            instantFinisherIds.push(p.id);
+          }
+        }
+        const newlyFinished = [];
+        for (const id of instantFinisherIds) {
+          const p = this.getPlayer(id);
+          p.finishRank = this.finishRankCounter++;
+          p.status = 'finished';
+          const rankEntry = { playerId: p.id, rank: p.finishRank };
+          this.rankings.push(rankEntry);
+          newlyFinished.push(rankEntry);
+        }
+        return newlyFinished;
+      }
+
+      advanceTurn() {
+        const eligible = this.getEligiblePlayers();
+        if (eligible.length <= 1) {
+          this.isGameOver = true;
+          this.loserId = eligible.length === 1 ? eligible[0].id : null;
+          if (this.loserId) {
+            const loser = this.getPlayer(this.loserId);
+            if (loser && loser.finishRank === null) {
+              loser.finishRank = this.players.length;
+              this.rankings.push({ playerId: this.loserId, rank: loser.finishRank });
+            }
+          }
+          return {
+            activePlayerId: null,
+            targetPlayerId: null,
+            activeIndex: -1,
+            targetIndex: -1,
+            isGameOver: true,
+            loserId: this.loserId
+          };
+        }
+
+        const n = this.players.length;
+        let nextActiveIdx = -1;
+        for (let step = 1; step <= n; step++) {
+          const idx = (this.currentActiveIndex + step) % n;
+          if (this.isEligible(this.players[idx])) {
+            nextActiveIdx = idx;
+            break;
+          }
+        }
+
+        let nextTargetIdx = -1;
+        for (let step = 1; step < n; step++) {
+          const idx = (nextActiveIdx + step) % n;
+          if (this.isEligible(this.players[idx])) {
+            nextTargetIdx = idx;
+            break;
+          }
+        }
+
+        this.currentActiveIndex = nextActiveIdx;
+        const activePlayerId = this.players[nextActiveIdx].id;
+        const targetPlayerId = this.players[nextTargetIdx].id;
+
+        return {
+          activePlayerId,
+          targetPlayerId,
+          activeIndex: nextActiveIdx,
+          targetIndex: nextTargetIdx,
+          isGameOver: false,
+          loserId: null
+        };
+      }
+
+      handleDrawResult(drawerId, targetId, pairFormedAndDiscarded) {
+        const target = this.getPlayer(targetId);
+        const drawer = this.getPlayer(drawerId);
+        if (!target || !drawer) {
+          throw new Error(`Invalid drawer (${drawerId}) or target (${targetId})`);
+        }
+        const newlyRanked = [];
+
+        // Step 1: Target lost 1 card
+        target.cardCount = Math.max(0, target.cardCount - 1);
+        let targetFinished = false;
+        if (target.cardCount === 0 && target.finishRank === null) {
+          target.finishRank = this.finishRankCounter++;
+          target.status = 'finished';
+          const rankEntry = { playerId: target.id, rank: target.finishRank };
+          this.rankings.push(rankEntry);
+          newlyRanked.push(rankEntry);
+          targetFinished = true;
+        }
+
+        // Step 2: Drawer gained 1 card, discarded 2 if pair formed
+        if (pairFormedAndDiscarded) {
+          drawer.cardCount = Math.max(0, drawer.cardCount - 1);
+        } else {
+          drawer.cardCount += 1;
+        }
+
+        let drawerFinished = false;
+        if (drawer.cardCount === 0 && drawer.finishRank === null) {
+          drawer.finishRank = this.finishRankCounter++;
+          drawer.status = 'finished';
+          const rankEntry = { playerId: drawer.id, rank: drawer.finishRank };
+          this.rankings.push(rankEntry);
+          newlyRanked.push(rankEntry);
+          drawerFinished = true;
+        }
+
+        return { targetFinished, drawerFinished, newlyRanked };
+      }
+
+      handleDisconnect(peerId) {
+        const p = this.getPlayer(peerId);
+        if (!p) return { isGameOver: false, loserId: null, shouldAdvanceTurn: false };
+
+        p.status = 'disconnected';
+        const eligible = this.getEligiblePlayers();
+
+        if (eligible.length <= 1) {
+          this.isGameOver = true;
+          this.loserId = p.finishRank ? (eligible[0]?.id || null) : p.id;
+          if (!p.finishRank) {
+            p.finishRank = this.players.length;
+            this.rankings.push({ playerId: p.id, rank: p.finishRank, reason: 'forfeit_disconnect' });
+          }
+          return { isGameOver: true, loserId: this.loserId, shouldAdvanceTurn: false };
+        }
+
+        const currentActiveId = this.currentActiveIndex >= 0 ? this.players[this.currentActiveIndex].id : null;
+        const shouldAdvanceTurn = (currentActiveId === peerId);
+        return { isGameOver: false, loserId: null, shouldAdvanceTurn };
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.BabanukiEngine = BabanukiEngine;
+      window.LocalHandManager = LocalHandManager;
+      window.TurnManager = TurnManager;
+    }
+
+    // -------------------------------------------------------------------------
+    // SDPCodec: Compression, Pruning & URL-safe Base64
+    // -------------------------------------------------------------------------
+    class SDPCodec {
+      static prune(sdp) {
+        if (!sdp || typeof sdp !== 'string') return '';
+        return sdp
+          .split(/\r?\n/)
+          .map(line => line.trim())
+          .filter(line => {
+            if (!line) return false;
+            if (line.startsWith('a=candidate:') && line.toLowerCase().includes(' tcp ')) return false;
+            if (line.startsWith('a=extmap-allow-mixed')) return false;
+            if (line.startsWith('a=msid-semantic:')) return false;
+            if (line.startsWith('a=ice-options:trickle')) return false;
+            return true;
+          })
+          .join('\r\n') + '\r\n';
+      }
+
+      static async compress(sdp) {
+        const pruned = this.prune(sdp);
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(pruned);
+
+        const cs = new CompressionStream('deflate-raw');
+        const writer = cs.writable.getWriter();
+        writer.closed.catch(() => {});
+        writer.write(bytes).catch(() => {});
+        writer.close().catch(() => {});
+
+        const compressedBuf = await new Response(cs.readable).arrayBuffer();
+        const compressedBytes = new Uint8Array(compressedBuf);
+
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < compressedBytes.length; i += chunkSize) {
+          const chunk = compressedBytes.subarray(i, i + chunkSize);
+          binary += String.fromCharCode.apply(null, chunk);
+        }
+
+        return btoa(binary)
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '');
+      }
+
+      /**
+       * Encodes an SDP string per PROJECT.md interface contract (alias for compress).
+       * @param {string} sdp 
+       * @returns {Promise<string>}
+       */
+      static async encode(sdp) {
+        return this.compress(sdp);
+      }
+
+      /**
+       * Decodes a connection code per PROJECT.md interface contract (alias for decompress).
+       * @param {string} code 
+       * @returns {Promise<string>}
+       */
+      static async decode(code) {
+        return this.decompress(code);
+      }
+
+      static async decompress(b64url) {
+        if (!b64url || typeof b64url !== 'string') {
+          throw new Error('Invalid connection code: input is empty or not a string');
+        }
+        try {
+          let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+          while (b64.length % 4 !== 0) b64 += '=';
+
+          const binary = atob(b64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+          const ds = new DecompressionStream('deflate-raw');
+          const writer = ds.writable.getWriter();
+          writer.closed.catch(() => {});
+          writer.write(bytes).catch(() => {});
+          writer.close().catch(() => {});
+
+          return await new Response(ds.readable).text();
+        } catch (err) {
+          throw new Error('Failed to decompress connection code: ' + (err.message || 'Corrupted or invalid code'));
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // P2PConnectionManager: WebRTC DataChannel Engine
+    // -------------------------------------------------------------------------
+    class P2PConnectionManager {
+      constructor(options = {}) {
+        this.peerId = options.peerId || ('peer_' + Math.random().toString(36).substring(2, 9));
+        this.isHost = !!options.isHost;
+        this.channelLabel = options.channelLabel || 'babanuki-sync';
+        this.iceTimeout = options.iceTimeout || 2500;
+        this.iceServers = options.iceServers || [{ urls: 'stun:stun.l.google.com:19302' }];
+        this.RTCPeerConnectionClass = options.RTCPeerConnectionClass || (typeof RTCPeerConnection !== 'undefined' ? RTCPeerConnection : null);
+
+        this.pc = null;
+        this.dc = null;
+        this.state = 'initial';
+        this._disconnectTimer = null;
+
+        this._onOpen = null;
+        this._onMessage = null;
+        this._onClose = null;
+        this._onError = null;
+        this._onStateChange = null;
+      }
+
+      onOpen(cb) { this._onOpen = cb; }
+      onMessage(cb) { this._onMessage = cb; }
+      onClose(cb) { this._onClose = cb; }
+      onError(cb) { this._onError = cb; }
+      onStateChange(cb) { this._onStateChange = cb; }
+
+      _setState(newState) {
+        if (this.state === newState) return;
+        this.state = newState;
+        if (this._onStateChange) this._onStateChange(newState);
+      }
+
+      _initPeerConnection() {
+        if (this.pc) return;
+        if (!this.RTCPeerConnectionClass) throw new Error('RTCPeerConnection is not supported');
+        this.pc = new this.RTCPeerConnectionClass({
+          iceServers: this.iceServers,
+          iceCandidatePoolSize: 0
+        });
+
+        this.pc.onconnectionstatechange = () => {
+          if (!this.pc) return;
+          const s = this.pc.connectionState;
+          if (s === 'connected') {
+            this._clearDisconnectTimer();
+            this._setState('connected');
+          } else if (s === 'disconnected') {
+            this._setState('disconnected');
+            this._startDisconnectTimer(3000);
+          } else if (s === 'failed' || s === 'closed') {
+            this._setState(s);
+            this._handleTeardown();
+          }
+        };
+
+        this.pc.oniceconnectionstatechange = () => {
+          if (this.pc && this.pc.iceConnectionState === 'failed') this._setState('failed');
+        };
+      }
+
+      _setupDataChannel(dc) {
+        this.dc = dc;
+        this.dc.binaryType = 'arraybuffer';
+        this.dc.onopen = () => {
+          this._setState('connected');
+          if (this._onOpen) this._onOpen();
+        };
+        this.dc.onmessage = (event) => {
+          if (!this._onMessage) return;
+          try {
+            const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+            this._onMessage(data);
+          } catch (e) {
+            this._onMessage(event.data);
+          }
+        };
+        this.dc.onclose = () => {
+          this._setState('closed');
+          if (this._onClose) this._onClose();
+        };
+        this.dc.onerror = (err) => {
+          if (this._onError) this._onError(err);
+        };
+      }
+
+      _waitForIceGathering() {
+        return new Promise((resolve) => {
+          if (!this.pc || this.pc.iceGatheringState === 'complete') return resolve();
+          let timer = null;
+          const cleanup = () => {
+            if (timer) clearTimeout(timer);
+            if (this.pc) {
+              if (typeof this.pc.removeEventListener === 'function') {
+                this.pc.removeEventListener('icegatheringstatechange', onStateChange);
+                this.pc.removeEventListener('icecandidate', onCandidate);
+              } else {
+                this.pc.onicegatheringstatechange = null;
+                this.pc.onicecandidate = null;
+              }
+            }
+          };
+          const onStateChange = () => {
+            if (this.pc && this.pc.iceGatheringState === 'complete') { cleanup(); resolve(); }
+          };
+          const onCandidate = (e) => {
+            if (!e.candidate) { cleanup(); resolve(); }
+          };
+          if (typeof this.pc.addEventListener === 'function') {
+            this.pc.addEventListener('icegatheringstatechange', onStateChange);
+            this.pc.addEventListener('icecandidate', onCandidate);
+          } else {
+            this.pc.onicegatheringstatechange = onStateChange;
+            this.pc.onicecandidate = onCandidate;
+          }
+          timer = setTimeout(() => { cleanup(); resolve(); }, this.iceTimeout);
+        });
+      }
+
+      async createOffer() {
+        this._setState('connecting');
+        this._initPeerConnection();
+        const dc = this.pc.createDataChannel(this.channelLabel, { ordered: true });
+        this._setupDataChannel(dc);
+        const offer = await this.pc.createOffer();
+        await this.pc.setLocalDescription(offer);
+        await this._waitForIceGathering();
+        const rawSDP = this.pc.localDescription ? this.pc.localDescription.sdp : offer.sdp;
+        return await SDPCodec.compress(rawSDP);
+      }
+
+      async applyAnswer(compressedAnswer) {
+        if (!this.pc) throw new Error('PeerConnection not initialized. Call createOffer first.');
+        const decompressedSDP = await SDPCodec.decompress(compressedAnswer);
+        await this.pc.setRemoteDescription({ type: 'answer', sdp: decompressedSDP });
+      }
+
+      async createAnswer(compressedOffer) {
+        this._setState('connecting');
+        this._initPeerConnection();
+        this.pc.ondatachannel = (e) => this._setupDataChannel(e.channel);
+        const decompressedSDP = await SDPCodec.decompress(compressedOffer);
+        await this.pc.setRemoteDescription({ type: 'offer', sdp: decompressedSDP });
+        const answer = await this.pc.createAnswer();
+        await this.pc.setLocalDescription(answer);
+        await this._waitForIceGathering();
+        const rawSDP = this.pc.localDescription ? this.pc.localDescription.sdp : answer.sdp;
+        return await SDPCodec.compress(rawSDP);
+      }
+
+      send(message) {
+        if (!this.dc || this.dc.readyState !== 'open') return false;
+        const payload = typeof message === 'object' ? JSON.stringify(message) : message;
+        this.dc.send(payload);
+        return true;
+      }
+
+      _startDisconnectTimer(ms) {
+        this._clearDisconnectTimer();
+        this._disconnectTimer = setTimeout(() => {
+          if (this.state === 'disconnected') {
+            this._setState('failed');
+            this._handleTeardown();
+          }
+        }, ms);
+      }
+
+      _clearDisconnectTimer() {
+        if (this._disconnectTimer) {
+          clearTimeout(this._disconnectTimer);
+          this._disconnectTimer = null;
+        }
+      }
+
+      _handleTeardown() {
+        this._clearDisconnectTimer();
+        if (this._onClose) this._onClose();
+      }
+
+      close() {
+        this._clearDisconnectTimer();
+        if (this.dc) { try { this.dc.close(); } catch (_) {} this.dc = null; }
+        if (this.pc) { try { this.pc.close(); } catch (_) {} this.pc = null; }
+        this._setState('closed');
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // ZeroKnowledgeValidator: Anti-Cheat Guard
+    // -------------------------------------------------------------------------
+    class ZeroKnowledgeValidator {
+      static getCardColor(suit) {
+        if (suit === 'spade' || suit === 'club') return 'black';
+        if (suit === 'heart' || suit === 'diamond') return 'red';
+        return null;
+      }
+
+      static assertNoSecretHandLeak(msg, context = '') {
+        if (!msg || typeof msg !== 'object') return;
+        if (msg.type === 'deal') return; // DEAL message is private to recipient
+
+        if (msg.players && Array.isArray(msg.players)) {
+          for (const p of msg.players) {
+            if ('cards' in p || 'hand' in p || 'secretCards' in p) {
+              throw new Error(`[ZK VIOLATION] Player object in ${context} contains card data`);
+            }
+          }
+        }
+        if (msg.type === 'hover' && ('card' in msg || 'suit' in msg || 'rank' in msg || 'isJoker' in msg)) {
+          throw new Error(`[ZK VIOLATION] Hover message leaks card details`);
+        }
+        if (msg.type === 'draw_req' && ('card' in msg || 'suit' in msg || 'rank' in msg || 'isJoker' in msg)) {
+          throw new Error(`[ZK VIOLATION] Draw request leaks card details`);
+        }
+      }
+
+      static validatePair(pair, rule) {
+        if (!Array.isArray(pair) || pair.length !== 2) return false;
+        const [c1, c2] = pair;
+        if (!c1 || !c2 || typeof c1 !== 'object' || typeof c2 !== 'object') return false;
+        if (c1.isJoker || c2.isJoker) return false;
+
+        // Anti-cheat: prevent single-card self-pairing across references & deserialized JSON
+        if (c1 === c2) return false;
+        if (c1.id && c2.id && c1.id === c2.id) return false;
+
+        // Canonical suits must strictly be one of: 'spade', 'club', 'heart', 'diamond'
+        const validSuits = ['spade', 'club', 'heart', 'diamond'];
+        if (!validSuits.includes(c1.suit) || !validSuits.includes(c2.suit)) return false;
+
+        // Both cards must possess identical ranks as integers 1..13
+        if (!Number.isInteger(c1.rank) || !Number.isInteger(c2.rank)) return false;
+        if (c1.rank < 1 || c1.rank > 13 || c2.rank < 1 || c2.rank > 13) return false;
+        if (c1.rank !== c2.rank) return false;
+
+        // In a 53-card deck, duplicate identical suit+rank does NOT exist (no two 7♠ in the deck)
+        if (c1.suit === c2.suit) return false;
+
+        // Color MUST strictly be derived from canonical suit, NEVER trusted from untrusted client object
+        const color1 = (c1.suit === 'spade' || c1.suit === 'club') ? 'black' : 'red';
+        const color2 = (c2.suit === 'spade' || c2.suit === 'club') ? 'black' : 'red';
+
+        if (rule === 1) {
+          // Rule 1: Rank only (different suits, identical ranks)
+          return true;
+        } else if (rule === 2) {
+          // Rule 2: Color + Rank (♠ & ♣ match, ♥ & ♦ match)
+          return color1 === color2;
+        }
+        return false;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // StarRoomCoordinator: Star Network Room Coordinator
+    // -------------------------------------------------------------------------
+    class StarRoomCoordinator {
+      constructor(hostId, hostName, rule = 1) {
+        this.hostId = hostId || 'host_0';
+        this.hostName = hostName || 'Host';
+        this.rule = (rule === 2) ? 2 : 1;
+        this.status = 'lobby';
+        this.peers = new Map();
+        this.discardHistory = [];
+        this.activePlayerId = null;
+        this.targetPlayerId = null;
+        this.turnOrder = [];
+        this.currentTurnIndex = 0;
+        this.finishRankCounter = 1;
+        this.rankings = [];
+        this.hostCardCount = 0;
+        this.hostFinishRank = null;
+        this.hostStatus = 'active';
+        this.initialDiscardsReceived = new Set();
+        this.onStateChanged = null;
+      }
+
+      getAllPlayersPublic() {
+        return [
+          {
+            id: this.hostId,
+            name: this.hostName,
+            isHost: true,
+            ready: true,
+            cardCount: this.hostCardCount,
+            finishRank: this.hostFinishRank,
+            status: this.hostStatus
+          },
+          ...Array.from(this.peers.values()).map(p => ({
+            id: p.peerId,
+            name: p.name,
+            isHost: false,
+            ready: p.ready,
+            cardCount: p.cardCount,
+            finishRank: p.finishRank,
+            status: p.status
+          }))
+        ];
+      }
+
+      registerPeer(peerId, name, dc = null, pc = null) {
+        if (this.status !== 'lobby') throw new Error('Cannot join: game already in progress');
+        if (this.peers.size >= 5) throw new Error('Room is full (max 6 players total)');
+        const entry = {
+          peerId,
+          name: name || `Player ${this.peers.size + 2}`,
+          isHost: false,
+          ready: false,
+          status: 'connected',
+          cardCount: 0,
+          finishRank: null,
+          dc,
+          pc,
+          joinedAt: Date.now()
+        };
+        this.peers.set(peerId, entry);
+        this.broadcastRoomState();
+        if (this.onStateChanged) this.onStateChanged();
+        return entry;
+      }
+
+      setPeerReady(peerId, ready) {
+        const peer = this.peers.get(peerId);
+        if (!peer) return;
+        peer.ready = !!ready;
+        this.broadcastRoomState();
+        if (this.onStateChanged) this.onStateChanged();
+      }
+
+      setRule(rule) {
+        if (this.status !== 'lobby') return;
+        this.rule = (rule === 2) ? 2 : 1;
+        this.broadcastRoomState();
+        if (this.onStateChanged) this.onStateChanged();
+      }
+
+      broadcastRoomState() {
+        const msg = {
+          type: 'room_state',
+          rule: this.rule,
+          status: this.status,
+          players: this.getAllPlayersPublic(),
+          activePlayerId: this.activePlayerId,
+          targetPlayerId: this.targetPlayerId
+        };
+        ZeroKnowledgeValidator.assertNoSecretHandLeak(msg, 'broadcastRoomState');
+        this.broadcast(msg);
+      }
+
+      broadcast(msg) {
+        ZeroKnowledgeValidator.assertNoSecretHandLeak(msg, 'broadcast');
+        const data = JSON.stringify(msg);
+        for (const peer of this.peers.values()) {
+          if (peer.dc && peer.dc.readyState === 'open') peer.dc.send(data);
+        }
+        if (typeof this.onLocalBroadcast === 'function') {
+          this.onLocalBroadcast(msg);
+        }
+      }
+
+      sendTo(peerId, msg) {
+        const peer = this.peers.get(peerId);
+        if (peer && peer.dc && peer.dc.readyState === 'open') {
+          peer.dc.send(JSON.stringify(msg));
+        }
+      }
+
+      canStartGame() {
+        if (this.status !== 'lobby') return false;
+        if (this.peers.size < 1) return false;
+        for (const p of this.peers.values()) {
+          if (!p.ready) return false;
+        }
+        return true;
+      }
+
+      startGame(engine) {
+        if (!this.canStartGame()) throw new Error('Cannot start: all players must be ready');
+        this.status = 'playing';
+        const allPlayers = this.getAllPlayersPublic();
+        const numPlayers = allPlayers.length;
+        const slices = engine.deal(numPlayers);
+
+        this.hostHandSlice = slices[0];
+        this.hostCardCount = slices[0].length;
+
+        let idx = 1;
+        for (const peer of this.peers.values()) {
+          const slice = slices[idx++];
+          peer.cardCount = slice.length;
+          this.sendTo(peer.peerId, { type: 'deal', secretCards: slice });
+        }
+
+        this.broadcast({
+          type: 'game_start',
+          rule: this.rule,
+          players: allPlayers.map(p => ({ id: p.id, name: p.name, cardCount: p.cardCount }))
+        });
+
+        this.turnOrder = allPlayers.map(p => p.id);
+        this.currentTurnIndex = 0;
+        this.initialDiscardsReceived = new Set();
+        this.activePlayerId = null;
+        this.targetPlayerId = null;
+        if (this.onStateChanged) this.onStateChanged();
+      }
+
+      _checkInitialDiscardsComplete() {
+        if (this.status !== 'playing') return false;
+        if (this.activePlayerId !== null) return true;
+
+        const activePlayerIds = this.turnOrder.length > 0
+          ? this.turnOrder.filter(id => {
+              const p = (id === this.hostId)
+                ? { status: this.hostStatus }
+                : this.peers.get(id);
+              return p && p.status !== 'disconnected';
+            })
+          : this.getAllPlayersPublic()
+              .filter(p => p.status !== 'disconnected')
+              .map(p => p.id);
+
+        if (activePlayerIds.length === 0) return false;
+
+        const allReceived = activePlayerIds.every(id => this.initialDiscardsReceived.has(id));
+        if (allReceived) {
+          this.advanceTurn();
+          return true;
+        }
+        return false;
+      }
+
+      handleInitialDiscard(playerId, discardedPairs, remainingCount) {
+        if (discardedPairs && Array.isArray(discardedPairs)) {
+          for (const pair of discardedPairs) {
+            if (!ZeroKnowledgeValidator.validatePair(pair, this.rule)) {
+              throw new Error(`Cheating attempt: invalid discard pair by ${playerId}`);
+            }
+            this.discardHistory.push({ playerId, pair });
+          }
+        }
+        this.updatePlayerCardCount(playerId, remainingCount);
+        if (discardedPairs && discardedPairs.length > 0) {
+          for (const pair of discardedPairs) {
+            this.broadcast({ type: 'discard', playerId, pair });
+          }
+        }
+        this.initialDiscardsReceived.add(playerId);
+        this._checkInitialDiscardsComplete();
+        if (this.onStateChanged) this.onStateChanged();
+      }
+
+      updatePlayerCardCount(playerId, remainingCount) {
+        if (playerId === this.hostId) {
+          this.hostCardCount = remainingCount;
+          if (remainingCount === 0 && !this.hostFinishRank) {
+            this.hostFinishRank = this.finishRankCounter++;
+            this.rankings.push({ playerId: this.hostId, rank: this.hostFinishRank });
+            this.broadcast({ type: 'finished', playerId: this.hostId, rank: this.hostFinishRank });
+          }
+        } else {
+          const peer = this.peers.get(playerId);
+          if (peer) {
+            peer.cardCount = remainingCount;
+            if (remainingCount === 0 && !peer.finishRank) {
+              peer.finishRank = this.finishRankCounter++;
+              this.rankings.push({ playerId, rank: peer.finishRank });
+              this.broadcast({ type: 'finished', playerId, rank: peer.finishRank });
+            }
+          }
+        }
+      }
+
+      advanceTurn() {
+        const eligible = this.turnOrder.filter(id => {
+          const p = id === this.hostId ? { cardCount: this.hostCardCount, status: this.hostStatus } : this.peers.get(id);
+          return p && p.cardCount > 0 && p.status !== 'disconnected';
+        });
+
+        if (eligible.length <= 1) {
+          const loserId = eligible.length === 1 ? eligible[0] : null;
+          this.endGame(loserId);
+          return;
+        }
+
+        const n = this.turnOrder.length;
+        let nextActiveId = null;
+        let nextActiveIdx = -1;
+
+        for (let step = 0; step < n; step++) {
+          const candidateIdx = (this.currentTurnIndex + step) % n;
+          const candidateId = this.turnOrder[candidateIdx];
+          if (eligible.includes(candidateId)) {
+            nextActiveId = candidateId;
+            nextActiveIdx = candidateIdx;
+            this.currentTurnIndex = (candidateIdx + 1) % n;
+            break;
+          }
+        }
+
+        let nextTargetId = null;
+        let nextTargetIdx = -1;
+        for (let step = 1; step < n; step++) {
+          const targetCandidateIdx = (nextActiveIdx + step) % n;
+          const candidateId = this.turnOrder[targetCandidateIdx];
+          if (eligible.includes(candidateId)) {
+            nextTargetId = candidateId;
+            nextTargetIdx = targetCandidateIdx;
+            break;
+          }
+        }
+
+        this.activePlayerId = nextActiveId;
+        this.targetPlayerId = nextTargetId;
+
+        const turnMsg = {
+          type: 'turn',
+          activePlayerId: nextActiveId,
+          targetPlayerId: nextTargetId,
+          activeIndex: nextActiveIdx,
+          targetIndex: nextTargetIdx
+        };
+        ZeroKnowledgeValidator.assertNoSecretHandLeak(turnMsg, 'turn');
+        this.broadcast(turnMsg);
+      }
+
+      endGame(loserId) {
+        this.status = 'game_over';
+        if (loserId && !this.rankings.find(r => r.playerId === loserId)) {
+          this.rankings.push({ playerId: loserId, rank: this.turnOrder.length });
+        }
+        this.broadcast({ type: 'game_over', loserId, rankings: this.rankings });
+        if (this.onStateChanged) this.onStateChanged();
+      }
+
+      handleDisconnect(peerId) {
+        const peer = this.peers.get(peerId);
+        if (!peer) return;
+        if (this.status === 'lobby') {
+          this.peers.delete(peerId);
+          this.broadcastRoomState();
+        } else {
+          peer.status = 'disconnected';
+          const eligible = this.turnOrder.filter(id => {
+            const p = id === this.hostId ? { cardCount: this.hostCardCount, status: this.hostStatus } : this.peers.get(id);
+            return p && p.cardCount > 0 && p.status !== 'disconnected';
+          });
+
+          if (eligible.length <= 1) {
+            if (!peer.finishRank) {
+              peer.finishRank = this.turnOrder.length;
+              this.rankings.push({ playerId: peerId, rank: peer.finishRank });
+            }
+            this.endGame(peerId);
+            return;
+          }
+
+          if (!this.activePlayerId) {
+            this._checkInitialDiscardsComplete();
+            this.broadcastRoomState();
+          } else if (this.activePlayerId === peerId || this.targetPlayerId === peerId) {
+            this.advanceTurn();
+          } else {
+            this.broadcastRoomState();
+          }
+        }
+        if (this.onStateChanged) this.onStateChanged();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // HostMessageRouter & ClientMessageRouter
+    // -------------------------------------------------------------------------
+    class HostMessageRouter {
+      constructor(coordinator) {
+        this.coordinator = coordinator;
+        this.onHostHover = null;
+        this.onHostDrawReq = null;
+        this.onHostDrawResp = null;
+      }
+
+      handleIncoming(fromPeerId, rawData) {
+        let msg;
+        try {
+          msg = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+        } catch (e) { return; }
+
+        if (!msg || typeof msg !== 'object') return;
+
+        switch (msg.type) {
+          case 'join':
+            this.coordinator.registerPeer(fromPeerId, msg.playerName);
+            break;
+          case 'ready':
+            this.coordinator.setPeerReady(fromPeerId, msg.ready);
+            break;
+          case 'initial_discard':
+            this.coordinator.handleInitialDiscard(fromPeerId, msg.discardedPairs, msg.remainingCount);
+            break;
+          case 'card_count':
+            this.coordinator.updatePlayerCardCount(fromPeerId, msg.cardCount);
+            break;
+          case 'discard':
+            if (msg.pair && ZeroKnowledgeValidator.validatePair(msg.pair, this.coordinator.rule)) {
+              this.coordinator.discardHistory.push({ playerId: fromPeerId, pair: msg.pair });
+              this.coordinator.broadcast({ type: 'discard', playerId: fromPeerId, pair: msg.pair });
+            }
+            break;
+          case 'hover':
+            if (msg.targetId === this.coordinator.hostId) {
+              if (this.onHostHover) this.onHostHover(msg.index);
+            } else {
+              this.coordinator.sendTo(msg.targetId, { type: 'hover', fromId: fromPeerId, index: msg.index });
+            }
+            break;
+          case 'draw_req':
+            if (msg.targetId === this.coordinator.hostId) {
+              if (this.onHostDrawReq) this.onHostDrawReq(fromPeerId, msg.cardIndex);
+            } else {
+              this.coordinator.sendTo(msg.targetId, { type: 'draw_req', drawerId: fromPeerId, cardIndex: msg.cardIndex });
+            }
+            break;
+          case 'draw_resp':
+            if (msg.drawerId === this.coordinator.hostId) {
+              if (this.onHostDrawResp) this.onHostDrawResp(fromPeerId, msg.card);
+            } else {
+              this.coordinator.sendTo(msg.drawerId, { type: 'draw_resp', card: msg.card });
+            }
+            break;
+          case 'turn_done':
+            if (fromPeerId === this.coordinator.activePlayerId) {
+              this.coordinator.advanceTurn();
+            }
+            break;
+        }
+      }
+    }
+
+    class ClientMessageRouter {
+      constructor(clientId, connManager) {
+        this.clientId = clientId;
+        this.connManager = connManager;
+        this.onRoomState = null;
+        this.onGameStart = null;
+        this.onDeal = null;
+        this.onHover = null;
+        this.onDrawReq = null;
+        this.onDrawResp = null;
+        this.onDiscard = null;
+        this.onTurn = null;
+        this.onFinished = null;
+        this.onGameOver = null;
+      }
+
+      handleIncoming(rawData) {
+        let msg;
+        try {
+          msg = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+        } catch (e) { return; }
+
+        if (!msg || typeof msg !== 'object') return;
+
+        switch (msg.type) {
+          case 'room_state': if (this.onRoomState) this.onRoomState(msg); break;
+          case 'game_start': if (this.onGameStart) this.onGameStart(msg); break;
+          case 'deal': if (this.onDeal) this.onDeal(msg.secretCards); break;
+          case 'hover': if (this.onHover) this.onHover(msg.index); break;
+          case 'draw_req': if (this.onDrawReq) this.onDrawReq(msg.drawerId, msg.cardIndex); break;
+          case 'draw_resp': if (this.onDrawResp) this.onDrawResp(msg.card); break;
+          case 'discard': if (this.onDiscard) this.onDiscard(msg.playerId, msg.pair); break;
+          case 'turn': if (this.onTurn) this.onTurn(msg.activePlayerId, msg.targetPlayerId); break;
+          case 'finished': if (this.onFinished) this.onFinished(msg.playerId, msg.rank); break;
+          case 'game_over': if (this.onGameOver) this.onGameOver(msg.loserId, msg.rankings); break;
+        }
+      }
+
+      sendJoin(name) { this.connManager.send({ type: 'join', playerId: this.clientId, playerName: name }); }
+      sendReady(ready) { this.connManager.send({ type: 'ready', ready: !!ready }); }
+      sendInitialDiscard(discardedPairs, remainingCount) { this.connManager.send({ type: 'initial_discard', discardedPairs, remainingCount }); }
+      sendHover(targetId, index) { this.connManager.send({ type: 'hover', targetId, index }); }
+      sendDrawReq(targetId, cardIndex) { this.connManager.send({ type: 'draw_req', targetId, cardIndex }); }
+      sendDrawResp(drawerId, card) { this.connManager.send({ type: 'draw_resp', drawerId, card }); }
+      sendDiscard(pair) { this.connManager.send({ type: 'discard', pair }); }
+      sendCardCount(cardCount) { this.connManager.send({ type: 'card_count', cardCount }); }
+      sendTurnDone() { this.connManager.send({ type: 'turn_done' }); }
+    }
+
+    // -------------------------------------------------------------------------
+    // PureQRCode: Zero-Dependency Canvas QR Generator
+    // -------------------------------------------------------------------------
+    const PureQRCode = (() => {
+      const QRMode = { MODE_8BIT_BYTE: 4 };
+      const QRECL = { L: 1, M: 0, Q: 3, H: 2 };
+
+      // Mapping from ISO/IEC 18004 2-bit format indicator (QRECL: M=0, L=1, H=2, Q=3)
+      // to RS_BLOCK_TABLE row offsets (0: L, 1: M, 2: Q, 3: H)
+      const EC_TABLE_OFFSET = {
+        [QRECL.L]: 0,
+        [QRECL.M]: 1,
+        [QRECL.Q]: 2,
+        [QRECL.H]: 3
+      };
+
+      const QRMath = {
+        glog(n) { if (n < 1) throw new Error('glog(' + n + ')'); return this.LOG_TABLE[n]; },
+        gexp(n) {
+          while (n < 0) n += 255;
+          while (n >= 256) n -= 255;
+          return this.EXP_TABLE[n];
+        },
+        EXP_TABLE: new Array(256),
+        LOG_TABLE: new Array(256)
+      };
+      for (let i = 0; i < 8; i++) QRMath.EXP_TABLE[i] = 1 << i;
+      for (let i = 8; i < 256; i++) {
+        QRMath.EXP_TABLE[i] = QRMath.EXP_TABLE[i - 4] ^ QRMath.EXP_TABLE[i - 5] ^
+                              QRMath.EXP_TABLE[i - 6] ^ QRMath.EXP_TABLE[i - 8];
+      }
+      for (let i = 0; i < 255; i++) QRMath.LOG_TABLE[QRMath.EXP_TABLE[i]] = i;
+
+      function QRPolynomial(num, shift) {
+        let offset = 0;
+        while (offset < num.length && num[offset] === 0) offset++;
+        this.num = new Array(num.length - offset + shift);
+        for (let i = 0; i < num.length - offset; i++) this.num[i] = num[i + offset];
+        for (let i = num.length - offset; i < this.num.length; i++) this.num[i] = 0;
+      }
+      QRPolynomial.prototype = {
+        get(index) { return this.num[index]; },
+        getLength() { return this.num.length; },
+        multiply(e) {
+          const num = new Array(this.getLength() + e.getLength() - 1).fill(0);
+          for (let i = 0; i < this.getLength(); i++) {
+            for (let j = 0; j < e.getLength(); j++) {
+              num[i + j] ^= QRMath.gexp(QRMath.glog(this.get(i)) + QRMath.glog(e.get(j)));
+            }
+          }
+          return new QRPolynomial(num, 0);
+        },
+        mod(e) {
+          if (this.getLength() - e.getLength() < 0) return this;
+          const ratio = QRMath.glog(this.get(0)) - QRMath.glog(e.get(0));
+          const num = new Array(this.getLength());
+          for (let i = 0; i < this.getLength(); i++) num[i] = this.get(i);
+          for (let i = 0; i < e.getLength(); i++) {
+            num[i] ^= QRMath.gexp(QRMath.glog(e.get(i)) + ratio);
+          }
+          return new QRPolynomial(num, 0).mod(e);
+        }
+      };
+
+      const RS_BLOCK_TABLE = [
+        [1, 26, 19], [1, 26, 16], [1, 26, 13], [1, 26, 9],
+        [1, 44, 34], [1, 44, 28], [1, 44, 22], [1, 44, 16],
+        [1, 70, 55], [1, 70, 44], [2, 35, 17], [2, 35, 13],
+        [1, 100, 80], [2, 50, 32], [2, 50, 24], [4, 25, 9],
+        [1, 134, 108], [2, 67, 43], [2, 33, 15, 2, 34, 16], [2, 33, 11, 2, 34, 12],
+        [2, 86, 68], [4, 43, 27], [4, 43, 19], [4, 43, 15],
+        [2, 98, 78], [4, 49, 31], [2, 32, 14, 4, 33, 15], [4, 39, 13, 1, 40, 14],
+        [2, 121, 97], [2, 60, 38, 2, 61, 39], [4, 40, 18, 2, 41, 19], [4, 40, 14, 2, 41, 15],
+        [2, 146, 116], [3, 58, 36, 2, 59, 37], [4, 36, 16, 4, 37, 17], [4, 36, 12, 4, 37, 13],
+        [2, 86, 68, 2, 87, 69], [4, 69, 43, 1, 70, 44], [6, 43, 19, 2, 44, 20], [6, 43, 15, 2, 44, 16],
+        [4, 101, 81], [1, 110, 50, 4, 111, 51], [4, 44, 17, 4, 45, 18], [3, 36, 12, 8, 37, 13],
+        [2, 116, 92, 2, 117, 93], [6, 58, 36, 2, 59, 37], [4, 46, 20, 6, 47, 21], [7, 42, 14, 4, 43, 15],
+        [4, 133, 107], [8, 59, 37, 4, 60, 38], [8, 44, 20, 4, 45, 21], [12, 33, 11, 4, 34, 12],
+        [3, 145, 115, 1, 146, 116], [4, 114, 54, 5, 115, 55], [11, 36, 16, 5, 37, 17], [11, 36, 12, 5, 37, 13],
+        [5, 109, 87, 1, 110, 88], [5, 117, 59, 5, 118, 60], [5, 54, 24, 7, 55, 25], [11, 36, 12, 7, 37, 13],
+        [5, 122, 98, 1, 123, 99], [7, 114, 46, 3, 115, 47], [15, 43, 19, 2, 44, 20], [3, 45, 15, 13, 46, 16],
+        [1, 135, 107, 5, 136, 108], [10, 74, 42, 1, 75, 43], [1, 50, 22, 15, 51, 23], [2, 42, 14, 17, 43, 15],
+        [5, 150, 120, 1, 151, 121], [9, 88, 50, 4, 89, 51], [17, 50, 22, 1, 51, 23], [2, 42, 14, 19, 43, 15],
+        [3, 141, 113, 4, 142, 114], [3, 110, 56, 11, 111, 57], [17, 47, 21, 4, 48, 22], [9, 39, 13, 16, 40, 14],
+        [3, 135, 107, 5, 136, 108], [3, 113, 59, 13, 114, 60], [15, 43, 19, 5, 44, 20], [15, 43, 15, 10, 44, 16]
+      ];
+
+      const QRUtil = {
+        PATTERN_POSITION_TABLE: [
+          [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34],
+          [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50],
+          [6, 30, 54], [6, 32, 58], [6, 34, 62], [6, 26, 46, 66],
+          [6, 26, 48, 70], [6, 26, 50, 74], [6, 30, 54, 78],
+          [6, 30, 56, 82], [6, 30, 58, 86], [6, 34, 62, 90]
+        ],
+        G15: (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | 1,
+        G18: (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | 1,
+        G15_MASK: (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1),
+
+        getBCHTypeInfo(data) {
+          let d = data << 10;
+          while (this.getBCHDigit(d) - this.getBCHDigit(this.G15) >= 0) {
+            d ^= (this.G15 << (this.getBCHDigit(d) - this.getBCHDigit(this.G15)));
+          }
+          return ((data << 10) | d) ^ this.G15_MASK;
+        },
+        getBCHTypeNumber(data) {
+          let d = data << 12;
+          while (this.getBCHDigit(d) - this.getBCHDigit(this.G18) >= 0) {
+            d ^= (this.G18 << (this.getBCHDigit(d) - this.getBCHDigit(this.G18)));
+          }
+          return (data << 12) | d;
+        },
+        getBCHDigit(data) {
+          let digit = 0;
+          while (data !== 0) { digit++; data >>>= 1; }
+          return digit;
+        },
+        getPatternPosition(typeNumber) {
+          return this.PATTERN_POSITION_TABLE[typeNumber - 1] || [];
+        },
+        getMask(maskPattern, i, j) {
+          switch (maskPattern) {
+            case 0: return (i + j) % 2 === 0;
+            case 1: return i % 2 === 0;
+            case 2: return j % 3 === 0;
+            case 3: return (i + j) % 3 === 0;
+            case 4: return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 === 0;
+            case 5: return ((i * j) % 2 + (i * j) % 3) === 0;
+            case 6: return (((i * j) % 2 + (i * j) % 3) % 2) === 0;
+            case 7: return (((i * j) % 3 + (i + j) % 2) % 2) === 0;
+            default: throw new Error('Invalid maskPattern: ' + maskPattern);
+          }
+        },
+        getErrorCorrectPolynomial(ecLength) {
+          let a = new QRPolynomial([1], 0);
+          for (let i = 0; i < ecLength; i++) {
+            a = a.multiply(new QRPolynomial([1, QRMath.gexp(i)], 0));
+          }
+          return a;
+        },
+        getLengthInBits(mode, type) {
+          if (1 <= type && type < 10) return (mode === QRMode.MODE_8BIT_BYTE) ? 8 : 10;
+          else if (type < 41) return 16;
+          throw new Error('Unsupported version: ' + type);
+        },
+        getLostPoint(qrCode) {
+          const moduleCount = qrCode.getModuleCount();
+          let lostPoint = 0;
+          for (let row = 0; row < moduleCount; row++) {
+            for (let col = 0; col < moduleCount; col++) {
+              let sameCount = 0;
+              const dark = qrCode.isDark(row, col);
+              for (let r = -1; r <= 1; r++) {
+                if (row + r < 0 || moduleCount <= row + r) continue;
+                for (let c = -1; c <= 1; c++) {
+                  if (col + c < 0 || moduleCount <= col + c) continue;
+                  if (r === 0 && c === 0) continue;
+                  if (dark === qrCode.isDark(row + r, col + c)) sameCount++;
+                }
+              }
+              if (sameCount > 5) lostPoint += (3 + sameCount - 5);
+            }
+          }
+          for (let row = 0; row < moduleCount - 1; row++) {
+            for (let col = 0; col < moduleCount - 1; col++) {
+              let count = 0;
+              if (qrCode.isDark(row, col)) count++;
+              if (qrCode.isDark(row + 1, col)) count++;
+              if (qrCode.isDark(row, col + 1)) count++;
+              if (qrCode.isDark(row + 1, col + 1)) count++;
+              if (count === 0 || count === 4) lostPoint += 3;
+            }
+          }
+          for (let row = 0; row < moduleCount; row++) {
+            for (let col = 0; col < moduleCount - 6; col++) {
+              if (qrCode.isDark(row, col) &&
+                !qrCode.isDark(row, col + 1) &&
+                qrCode.isDark(row, col + 2) &&
+                qrCode.isDark(row, col + 3) &&
+                qrCode.isDark(row, col + 4) &&
+                !qrCode.isDark(row, col + 5) &&
+                qrCode.isDark(row, col + 6)) {
+                lostPoint += 40;
+              }
+            }
+          }
+          for (let col = 0; col < moduleCount; col++) {
+            for (let row = 0; row < moduleCount - 6; row++) {
+              if (qrCode.isDark(row, col) &&
+                !qrCode.isDark(row + 1, col) &&
+                qrCode.isDark(row + 2, col) &&
+                qrCode.isDark(row + 3, col) &&
+                qrCode.isDark(row + 4, col) &&
+                !qrCode.isDark(row + 5, col) &&
+                qrCode.isDark(row + 6, col)) {
+                lostPoint += 40;
+              }
+            }
+          }
+          let darkCount = 0;
+          for (let col = 0; col < moduleCount; col++) {
+            for (let row = 0; row < moduleCount; row++) {
+              if (qrCode.isDark(row, col)) darkCount++;
+            }
+          }
+          const ratio = Math.abs(100 * darkCount / (moduleCount * moduleCount) - 50) / 5;
+          lostPoint += ratio * 10;
+          return lostPoint;
+        }
+      };
+
+      function QRBitBuffer() {
+        this.buffer = [];
+        this.length = 0;
+      }
+      QRBitBuffer.prototype = {
+        get(index) { return ((this.buffer[Math.floor(index / 8)] >>> (7 - index % 8)) & 1) === 1; },
+        put(num, length) {
+          for (let i = 0; i < length; i++) this.putBit(((num >>> (length - i - 1)) & 1) === 1);
+        },
+        putBit(bit) {
+          const bufIndex = Math.floor(this.length / 8);
+          if (this.buffer.length <= bufIndex) this.buffer.push(0);
+          if (bit) this.buffer[bufIndex] |= (0x80 >>> (this.length % 8));
+          this.length++;
+        }
+      };
+
+      function QRCodeModel(typeNumber, errorCorrectLevel) {
+        this.typeNumber = typeNumber;
+        this.errorCorrectLevel = errorCorrectLevel;
+        this.modules = null;
+        this.moduleCount = 0;
+        this.dataCache = null;
+        this.dataList = [];
+      }
+      QRCodeModel.prototype = {
+        addData(data) {
+          this.dataList.push({
+            mode: QRMode.MODE_8BIT_BYTE,
+            data: data,
+            getLength() { return new TextEncoder().encode(this.data).length; },
+            write(buffer) {
+              const bytes = new TextEncoder().encode(this.data);
+              for (let i = 0; i < bytes.length; i++) buffer.put(bytes[i], 8);
+            }
+          });
+          this.dataCache = null;
+        },
+        isDark(row, col) {
+          if (row < 0 || this.moduleCount <= row || col < 0 || this.moduleCount <= col) {
+            throw new Error(row + ',' + col);
+          }
+          return this.modules[row][col];
+        },
+        getModuleCount() { return this.moduleCount; },
+        make() {
+          if (this.typeNumber < 1) {
+            let typeNumber = 1;
+            for (typeNumber = 1; typeNumber <= 20; typeNumber++) {
+              const ecOffset = EC_TABLE_OFFSET[this.errorCorrectLevel] !== undefined
+                ? EC_TABLE_OFFSET[this.errorCorrectLevel]
+                : 0;
+              const rsBlock = RS_BLOCK_TABLE[(typeNumber - 1) * 4 + ecOffset];
+              let totalDataCount = 0;
+              const length = rsBlock.length / 3;
+              for (let i = 0; i < length; i++) totalDataCount += rsBlock[i * 3 + 0] * rsBlock[i * 3 + 2];
+              const buffer = new QRBitBuffer();
+              for (let i = 0; i < this.dataList.length; i++) {
+                const item = this.dataList[i];
+                buffer.put(item.mode, 4);
+                buffer.put(item.getLength(), QRUtil.getLengthInBits(item.mode, typeNumber));
+                item.write(buffer);
+              }
+              if (buffer.length <= totalDataCount * 8) break;
+            }
+            if (typeNumber > 20) throw new Error('Data payload exceeds maximum supported QR capacity');
+            this.typeNumber = typeNumber;
+          }
+          this.makeImpl(false, this.getBestMaskPattern());
+        },
+        makeImpl(test, maskPattern) {
+          this.moduleCount = this.typeNumber * 4 + 17;
+          this.modules = new Array(this.moduleCount);
+          for (let row = 0; row < this.moduleCount; row++) {
+            this.modules[row] = new Array(this.moduleCount).fill(null);
+          }
+          this.setupPositionProbePattern(0, 0);
+          this.setupPositionProbePattern(this.moduleCount - 7, 0);
+          this.setupPositionProbePattern(0, this.moduleCount - 7);
+          this.setupPositionAdjustPattern();
+          this.setupTimingPattern();
+          this.setupTypeInfo(test, maskPattern);
+          if (this.typeNumber >= 7) this.setupTypeNumber(test);
+          if (this.dataCache === null) {
+            this.dataCache = QRCodeModel.createData(this.typeNumber, this.errorCorrectLevel, this.dataList);
+          }
+          this.mapData(this.dataCache, maskPattern);
+        },
+        setupPositionProbePattern(row, col) {
+          for (let r = -1; r <= 7; r++) {
+            if (row + r <= -1 || this.moduleCount <= row + r) continue;
+            for (let c = -1; c <= 7; c++) {
+              if (col + c <= -1 || this.moduleCount <= col + c) continue;
+              if ((0 <= r && r <= 6 && (c === 0 || c === 6)) ||
+                  (0 <= c && c <= 6 && (r === 0 || r === 6)) ||
+                  (2 <= r && r <= 4 && 2 <= c && c <= 4)) {
+                this.modules[row + r][col + c] = true;
+              } else {
+                this.modules[row + r][col + c] = false;
+              }
+            }
+          }
+        },
+        getBestMaskPattern() {
+          let minLostPoint = 0;
+          let pattern = 0;
+          for (let i = 0; i < 8; i++) {
+            this.makeImpl(true, i);
+            const lostPoint = QRUtil.getLostPoint(this);
+            if (i === 0 || minLostPoint > lostPoint) {
+              minLostPoint = lostPoint;
+              pattern = i;
+            }
+          }
+          return pattern;
+        },
+        setupTimingPattern() {
+          for (let r = 8; r < this.moduleCount - 8; r++) {
+            if (this.modules[r][6] !== null) continue;
+            this.modules[r][6] = (r % 2 === 0);
+          }
+          for (let c = 8; c < this.moduleCount - 8; c++) {
+            if (this.modules[6][c] !== null) continue;
+            this.modules[6][c] = (c % 2 === 0);
+          }
+        },
+        setupPositionAdjustPattern() {
+          const pos = QRUtil.getPatternPosition(this.typeNumber);
+          for (let i = 0; i < pos.length; i++) {
+            for (let j = 0; j < pos.length; j++) {
+              const row = pos[i];
+              const col = pos[j];
+              if (this.modules[row][col] !== null) continue;
+              for (let r = -2; r <= 2; r++) {
+                for (let c = -2; c <= 2; c++) {
+                  if (r === -2 || r === 2 || c === -2 || c === 2 || (r === 0 && c === 0)) {
+                    this.modules[row + r][col + c] = true;
+                  } else {
+                    this.modules[row + r][col + c] = false;
+                  }
+                }
+              }
+            }
+          }
+        },
+        setupTypeNumber(test) {
+          const bits = QRUtil.getBCHTypeNumber(this.typeNumber);
+          for (let i = 0; i < 18; i++) {
+            const mod = (!test && ((bits >> i) & 1) === 1);
+            this.modules[Math.floor(i / 3)][i % 3 + this.moduleCount - 8 - 3] = mod;
+            this.modules[i % 3 + this.moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
+          }
+        },
+        setupTypeInfo(test, maskPattern) {
+          const data = (this.errorCorrectLevel << 3) | maskPattern;
+          const bits = QRUtil.getBCHTypeInfo(data);
+          for (let i = 0; i < 15; i++) {
+            const mod = (!test && ((bits >> i) & 1) === 1);
+            if (i < 6) this.modules[i][8] = mod;
+            else if (i < 8) this.modules[i + 1][8] = mod;
+            else this.modules[this.moduleCount - 15 + i][8] = mod;
+
+            if (i < 8) this.modules[8][this.moduleCount - i - 1] = mod;
+            else if (i < 9) this.modules[8][15 - i - 1 + 1] = mod;
+            else this.modules[8][15 - i - 1] = mod;
+          }
+          this.modules[this.moduleCount - 8][8] = !test;
+        },
+        mapData(data, maskPattern) {
+          let inc = -1;
+          let row = this.moduleCount - 1;
+          let bitIndex = 7;
+          let byteIndex = 0;
+          for (let col = this.moduleCount - 1; col > 0; col -= 2) {
+            if (col === 6) col--;
+            while (true) {
+              for (let c = 0; c < 2; c++) {
+                if (this.modules[row][col - c] === null) {
+                  let dark = false;
+                  if (byteIndex < data.length) {
+                    dark = (((data[byteIndex] >>> bitIndex) & 1) === 1);
+                  }
+                  const mask = QRUtil.getMask(maskPattern, row, col - c);
+                  if (mask) dark = !dark;
+                  this.modules[row][col - c] = dark;
+                  bitIndex--;
+                  if (bitIndex === -1) {
+                    byteIndex++;
+                    bitIndex = 7;
+                  }
+                }
+              }
+              row += inc;
+              if (row < 0 || this.moduleCount <= row) {
+                row -= inc;
+                inc = -inc;
+                break;
+              }
+            }
+          }
+        }
+      };
+
+      QRCodeModel.createData = (typeNumber, errorCorrectLevel, dataList) => {
+        const ecOffset = EC_TABLE_OFFSET[errorCorrectLevel] !== undefined
+          ? EC_TABLE_OFFSET[errorCorrectLevel]
+          : 0;
+        const rsBlock = RS_BLOCK_TABLE[(typeNumber - 1) * 4 + ecOffset];
+        const rsBlocks = [];
+        const length = rsBlock.length / 3;
+        for (let i = 0; i < length; i++) {
+          const count = rsBlock[i * 3 + 0];
+          const totalCount = rsBlock[i * 3 + 1];
+          const dataCount = rsBlock[i * 3 + 2];
+          for (let j = 0; j < count; j++) rsBlocks.push({ totalCount, dataCount });
+        }
+
+        const buffer = new QRBitBuffer();
+        for (let i = 0; i < dataList.length; i++) {
+          const item = dataList[i];
+          buffer.put(item.mode, 4);
+          buffer.put(item.getLength(), QRUtil.getLengthInBits(item.mode, typeNumber));
+          item.write(buffer);
+        }
+        let totalDataCount = 0;
+        for (let i = 0; i < rsBlocks.length; i++) totalDataCount += rsBlocks[i].dataCount;
+        if (buffer.length > totalDataCount * 8) throw new Error('Code overflow');
+        if (buffer.length + 4 <= totalDataCount * 8) buffer.put(0, 4);
+        while (buffer.length % 8 !== 0) buffer.putBit(false);
+        while (true) {
+          if (buffer.length >= totalDataCount * 8) break;
+          buffer.put(0xec, 8);
+          if (buffer.length >= totalDataCount * 8) break;
+          buffer.put(0x11, 8);
+        }
+
+        let offset = 0;
+        let maxDcCount = 0;
+        let maxEcCount = 0;
+        const dcdata = new Array(rsBlocks.length);
+        const ecdata = new Array(rsBlocks.length);
+        for (let r = 0; r < rsBlocks.length; r++) {
+          const dcCount = rsBlocks[r].dataCount;
+          const ecCount = rsBlocks[r].totalCount - dcCount;
+          maxDcCount = Math.max(maxDcCount, dcCount);
+          maxEcCount = Math.max(maxEcCount, ecCount);
+          dcdata[r] = new Array(dcCount);
+          for (let i = 0; i < dcdata[r].length; i++) dcdata[r][i] = 0xff & buffer.buffer[i + offset];
+          offset += dcCount;
+          const rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
+          const rawPoly = new QRPolynomial(dcdata[r], rsPoly.getLength() - 1);
+          const modPoly = rawPoly.mod(rsPoly);
+          ecdata[r] = new Array(rsPoly.getLength() - 1);
+          for (let i = 0; i < ecdata[r].length; i++) {
+            const modIndex = i + modPoly.getLength() - ecdata[r].length;
+            ecdata[r][i] = (modIndex >= 0) ? modPoly.get(modIndex) : 0;
+          }
+        }
+
+        let totalCodeCount = 0;
+        for (let i = 0; i < rsBlocks.length; i++) totalCodeCount += rsBlocks[i].totalCount;
+        const data = new Array(totalCodeCount);
+        let index = 0;
+        for (let i = 0; i < maxDcCount; i++) {
+          for (let r = 0; r < rsBlocks.length; r++) {
+            if (i < dcdata[r].length) data[index++] = dcdata[r][i];
+          }
+        }
+        for (let i = 0; i < maxEcCount; i++) {
+          for (let r = 0; r < rsBlocks.length; r++) {
+            if (i < ecdata[r].length) data[index++] = ecdata[r][i];
+          }
+        }
+        return data;
+      };
+
+      return {
+        QRCodeModel,
+        QRECL,
+        EC_TABLE_OFFSET,
+        renderToCanvas(canvas, text, options = {}) {
+          if (!canvas || !canvas.getContext) throw new Error('Valid canvas element required');
+          const errorCorrectLevel = (options.errorCorrectLevel !== undefined) ? options.errorCorrectLevel : QRECL.L;
+          const typeNumber = options.typeNumber || 0;
+          const qr = new QRCodeModel(typeNumber, errorCorrectLevel);
+          qr.addData(text);
+          qr.make();
+
+          const moduleCount = qr.getModuleCount();
+          const margin = (options.margin !== undefined) ? options.margin : 4;
+          const targetSize = options.size || 280;
+          const cellSize = Math.floor(targetSize / (moduleCount + margin * 2)) || 1;
+          const actualSize = (moduleCount + margin * 2) * cellSize;
+
+          canvas.width = actualSize;
+          canvas.height = actualSize;
+          const ctx = canvas.getContext('2d');
+
+          ctx.fillStyle = options.lightColor || '#ffffff';
+          ctx.fillRect(0, 0, actualSize, actualSize);
+
+          ctx.fillStyle = options.darkColor || '#000000';
+          for (let r = 0; r < moduleCount; r++) {
+            for (let c = 0; c < moduleCount; c++) {
+              if (qr.isDark(r, c)) {
+                ctx.fillRect((c + margin) * cellSize, (r + margin) * cellSize, cellSize, cellSize);
+              }
+            }
+          }
+
+          return { version: qr.typeNumber, moduleCount, cellSize, actualSize };
+        }
+      };
+    })();
+
+    // -------------------------------------------------------------------------
+    // QRScannerManager: Camera Scanner via BarcodeDetector
+    // -------------------------------------------------------------------------
+    class QRScannerManager {
+      constructor() {
+        this.stream = null;
+        this.animationFrameId = null;
+        this.isScanning = false;
+        this.detector = null;
+      }
+
+      static async isSupported() {
+        if (typeof window === 'undefined' || !('BarcodeDetector' in window)) return false;
+        try {
+          const formats = await BarcodeDetector.getSupportedFormats();
+          return formats.includes('qr_code');
+        } catch (e) {
+          return false;
+        }
+      }
+
+      async startCamera(videoElement, onDetected, onError) {
+        this.stop();
+        if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          if (onError) onError(new Error('カメラ機能がお使いのブラウザや環境（file:///など）で利用できません。コピー＆ペーストをご利用ください。'));
+          return;
+        }
+
+        const supported = await QRScannerManager.isSupported();
+        if (!supported) {
+          if (onError) onError(new Error('このブラウザではBarcodeDetector APIが未対応です。下の「貼り付け」ボタンまたはコード直接入力をご利用ください。'));
+          return;
+        }
+
+        try {
+          this.stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false
+          });
+          videoElement.srcObject = this.stream;
+          await videoElement.play();
+
+          this.detector = new BarcodeDetector({ formats: ['qr_code'] });
+          this.isScanning = true;
+          let lastScanTime = 0;
+          const SCAN_INTERVAL_MS = 150;
+
+          const scanLoop = async (timestamp) => {
+            if (!this.isScanning) return;
+            if (timestamp - lastScanTime >= SCAN_INTERVAL_MS) {
+              lastScanTime = timestamp;
+              if (videoElement.readyState >= 2) {
+                try {
+                  const barcodes = await this.detector.detect(videoElement);
+                  if (barcodes && barcodes.length > 0) {
+                    const code = barcodes[0].rawValue;
+                    if (code && code.trim()) {
+                      this.stop();
+                      if (onDetected) onDetected(code.trim());
+                      return;
+                    }
+                  }
+                } catch (err) {
+                  console.warn('Barcode detection frame skipped:', err);
+                }
+              }
+            }
+            this.animationFrameId = requestAnimationFrame(scanLoop);
+          };
+          this.animationFrameId = requestAnimationFrame(scanLoop);
+        } catch (err) {
+          this.stop();
+          if (onError) {
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+              onError(new Error('カメラのアクセスが拒否されました。ブラウザ設定を確認するか、コードのコピー＆ペーストをご利用ください。'));
+            } else {
+              onError(err);
+            }
+          }
+        }
+      }
+
+      stop() {
+        this.isScanning = false;
+        if (this.animationFrameId) {
+          if (typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(this.animationFrameId);
+          this.animationFrameId = null;
+        }
+        if (this.stream) {
+          if (typeof this.stream.getTracks === 'function') {
+            this.stream.getTracks().forEach(track => {
+              if (typeof track.stop === 'function') track.stop();
+            });
+          }
+          this.stream = null;
+        }
+      }
+
+      async scanImageFile(file, onDetected, onError) {
+        const supported = await QRScannerManager.isSupported();
+        if (!supported) {
+          if (onError) onError(new Error('お使いの環境では画像QR解析が未対応です。コードの貼り付けをご利用ください。'));
+          return;
+        }
+        try {
+          const img = new Image();
+          const objectUrl = URL.createObjectURL(file);
+          img.onload = async () => {
+            URL.revokeObjectURL(objectUrl);
+            try {
+              const detector = new BarcodeDetector({ formats: ['qr_code'] });
+              const barcodes = await detector.detect(img);
+              if (barcodes && barcodes.length > 0) {
+                if (onDetected) onDetected(barcodes[0].rawValue.trim());
+              } else {
+                if (onError) onError(new Error('選択された画像内にQRコードが検出されませんでした。'));
+              }
+            } catch (e) {
+              if (onError) onError(e);
+            }
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            if (onError) onError(new Error('画像の読み込みに失敗しました。'));
+          };
+          img.src = objectUrl;
+        } catch (e) {
+          if (onError) onError(e);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // ClipboardController: 1-Click Copy & Paste with Fallbacks
+    // -------------------------------------------------------------------------
+    class ClipboardController {
+      static async copyWithFeedback(buttonElement, text, feedbackElement = null) {
+        if (!text || !text.trim()) {
+          if (feedbackElement) feedbackElement.textContent = 'コピーするコードが生成されていません。';
+          return false;
+        }
+
+        let success = false;
+        if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          try {
+            await navigator.clipboard.writeText(text.trim());
+            success = true;
+          } catch (e) {}
+        }
+
+        if (!success && typeof document !== 'undefined') {
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = text.trim();
+            ta.style.position = 'fixed';
+            ta.style.top = '0';
+            ta.style.left = '-9999px';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            success = document.execCommand('copy');
+            document.body.removeChild(ta);
+          } catch (err) {
+            success = false;
+          }
+        }
+
+        if (success) {
+          if (buttonElement) {
+            const originalText = buttonElement.innerHTML;
+            buttonElement.innerHTML = '<span>✓ コピー完了!</span>';
+            if (buttonElement.classList) buttonElement.classList.add('btn-feedback-success');
+            setTimeout(() => {
+              buttonElement.innerHTML = originalText;
+              if (buttonElement.classList) buttonElement.classList.remove('btn-feedback-success');
+            }, 1500);
+          }
+          if (feedbackElement) {
+            feedbackElement.textContent = 'クリップボードにコピーしました！相手に送信してください。';
+            feedbackElement.className = 'status-msg success';
+          }
+          return true;
+        } else {
+          if (feedbackElement) {
+            feedbackElement.textContent = 'コピーが制限されました。コード枠から直接選択してCtrl+Cを押してください。';
+            feedbackElement.className = 'status-msg warning';
+          }
+          return false;
+        }
+      }
+
+      static async pasteWithFeedback(buttonElement, textareaElement, onPasted) {
+        let text = '';
+        if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+          try {
+            text = await navigator.clipboard.readText();
+          } catch (e) {}
+        }
+
+        if (text && text.trim()) {
+          if (textareaElement) textareaElement.value = text.trim();
+          if (buttonElement) {
+            const originalText = buttonElement.innerHTML;
+            buttonElement.innerHTML = '<span>✓ 貼り付け完了!</span>';
+            if (buttonElement.classList) buttonElement.classList.add('btn-feedback-success');
+            setTimeout(() => {
+              buttonElement.innerHTML = originalText;
+              if (buttonElement.classList) buttonElement.classList.remove('btn-feedback-success');
+            }, 1500);
+          }
+          if (typeof onPasted === 'function') onPasted(text.trim());
+          return true;
+        } else {
+          if (textareaElement) {
+            if (typeof textareaElement.focus === 'function') textareaElement.focus();
+            if (typeof textareaElement.select === 'function') textareaElement.select();
+            textareaElement.placeholder = 'Ctrl+V または長押しでここに貼り付けてください';
+          }
+          if (buttonElement) {
+            const originalText = buttonElement.innerHTML;
+            buttonElement.innerHTML = '<span>Ctrl+V で貼付</span>';
+            if (buttonElement.classList) buttonElement.classList.add('btn-feedback-prompt');
+            setTimeout(() => {
+              buttonElement.innerHTML = originalText;
+              if (buttonElement.classList) buttonElement.classList.remove('btn-feedback-prompt');
+            }, 2000);
+          }
+          if (textareaElement && typeof textareaElement.addEventListener === 'function') {
+            const pasteListener = () => {
+              setTimeout(() => {
+                const manualVal = textareaElement.value.trim();
+                if (manualVal && typeof onPasted === 'function') onPasted(manualVal);
+                textareaElement.removeEventListener('paste', pasteListener);
+              }, 10);
+            };
+            textareaElement.addEventListener('paste', pasteListener, { once: true });
+          }
+          return false;
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // UI Controller & DOM State Binding
+    // -------------------------------------------------------------------------
+    let currentRole = 'host';
+    let hostCoordinator = null;
+    let hostMessageRouter = null;
+    let hostSlotManagers = [];
+    let clientConnManager = null;
+    let clientRouter = null;
+    let currentTargetTextareaId = null;
+    const scannerManager = new QRScannerManager();
+
+    // Gameplay private & public state
+    let localHandManager = null;
+    let currentGameRule = 1;
+    let myPlayerId = 'host_0';
+    let myPlayerName = 'ホスト';
+    let allPlayers = [];
+    let discardHistory = [];
+    let currentActivePlayerId = null;
+    let currentTargetPlayerId = null;
+    let isDrawingInProgress = false;
+    let lastHoverSentIndex = null;
+    let hoverThrottleTimeout = null;
+
+    function showScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      const target = document.getElementById(screenId);
+      if (target) target.classList.add('active');
+    }
+
+    function switchRole(role) {
+      currentRole = role;
+      document.getElementById('btn-role-host').classList.toggle('active', role === 'host');
+      document.getElementById('btn-role-join').classList.toggle('active', role === 'join');
+      document.getElementById('panel-host').style.display = role === 'host' ? 'block' : 'none';
+      document.getElementById('panel-join').style.display = role === 'join' ? 'block' : 'none';
+    }
+
+    async function handleCreateRoom() {
+      const hostName = document.getElementById('host-name').value.trim() || 'ホスト';
+      const ruleVal = parseInt(document.getElementById('select-rule').value, 10) || 1;
+
+      hostCoordinator = new StarRoomCoordinator('host_0', hostName, ruleVal);
+      hostMessageRouter = new HostMessageRouter(hostCoordinator);
+      myPlayerId = 'host_0';
+      myPlayerName = hostName;
+      currentGameRule = ruleVal;
+      setupHostMessageRouterHandlers();
+
+      hostCoordinator.onLocalBroadcast = (msg) => {
+        handleLocalGameEvent(msg);
+      };
+
+      hostCoordinator.onStateChanged = () => {
+        allPlayers = hostCoordinator.getAllPlayersPublic();
+        if (document.getElementById('screen-lobby').classList.contains('active')) {
+          updateLobbyUI();
+        } else if (document.getElementById('screen-play').classList.contains('active')) {
+          renderPlayerProgress();
+        }
+      };
+
+      hostSlotManagers = [];
+
+      document.getElementById('host-slot-section').style.display = 'block';
+      document.getElementById('btn-create-room').style.display = 'none';
+
+      const slotsContainer = document.getElementById('host-slots-container');
+      slotsContainer.innerHTML = '';
+
+      for (let i = 1; i <= 5; i++) {
+        const slotEl = document.createElement('div');
+        slotEl.className = 'slot-card';
+        slotEl.id = `slot-card-${i}`;
+        slotEl.innerHTML = `
+          <div class="slot-header">
+            <span>スロット ${i} (参加者 ${i + 1})</span>
+            <span id="slot-badge-${i}" class="slot-badge badge-empty">未接続</span>
+          </div>
+          <div class="textarea-action-wrapper">
+            <label class="form-label" style="font-size: 0.75rem;">ホストOfferコード:</label>
+            <textarea id="slot-offer-${i}" class="signaling-textarea" readonly placeholder="Offer生成中..."></textarea>
+            <div class="action-row">
+              <button id="btn-copy-slot-${i}" class="btn btn-primary" onclick="copySlotOffer(${i})">
+                📋 コピー
+              </button>
+              <button id="btn-link-slot-${i}" class="btn btn-secondary" onclick="copySlotInviteLink(${i})">
+                🔗 招待リンク
+              </button>
+              <button class="btn btn-secondary" onclick="showSlotQR(${i})">
+                📷 QR表示
+              </button>
+            </div>
+          </div>
+          <div class="textarea-action-wrapper">
+            <label class="form-label" style="font-size: 0.75rem;">参加者Answerコード:</label>
+            <textarea id="slot-answer-${i}" class="signaling-textarea" placeholder="相手のAnswerコードを貼り付け"></textarea>
+            <div class="action-row">
+              <button id="btn-paste-slot-${i}" class="btn btn-secondary" onclick="pasteSlotAnswer(${i})">
+                📥 貼り付け
+              </button>
+              <button class="btn btn-secondary" onclick="openScannerModal('slot-answer-${i}')">
+                📷 QR読取
+              </button>
+              <button id="btn-connect-slot-${i}" class="btn btn-success" style="flex: 1;" onclick="connectSlot(${i})">
+                接続
+              </button>
+            </div>
+          </div>
+        `;
+        slotsContainer.appendChild(slotEl);
+
+        if (i === 1) await generateSlotOffer(1);
+      }
+    }
+
+    async function generateSlotOffer(slotIndex) {
+      const connMgr = new P2PConnectionManager({ peerId: `slot_${slotIndex}`, isHost: true });
+      const badge = document.getElementById(`slot-badge-${slotIndex}`);
+      if (badge) {
+        badge.className = 'slot-badge badge-connecting';
+        badge.textContent = '接続待機中';
+      }
+
+      const offerCode = await connMgr.createOffer();
+      const ta = document.getElementById(`slot-offer-${slotIndex}`);
+      if (ta) ta.value = offerCode;
+
+      hostSlotManagers[slotIndex] = {
+        slotIndex,
+        connManager: connMgr,
+        offerCode,
+        connected: false
+      };
+
+      connMgr.onOpen(() => {
+        if (badge) {
+          badge.className = 'slot-badge badge-connected';
+          badge.textContent = '✓ 接続完了';
+        }
+        hostSlotManagers[slotIndex].connected = true;
+        hostCoordinator.registerPeer(`slot_${slotIndex}`, `参加者${slotIndex + 1}`, connMgr.dc, connMgr.pc);
+
+        connMgr.onMessage((msg) => {
+          if (hostMessageRouter) hostMessageRouter.handleIncoming(`slot_${slotIndex}`, msg);
+        });
+
+        if (slotIndex < 5 && !hostSlotManagers[slotIndex + 1]) {
+          generateSlotOffer(slotIndex + 1);
+        }
+        updateLobbyUI();
+      });
+
+      connMgr.onClose(() => {
+        if (badge) {
+          badge.className = 'slot-badge badge-empty';
+          badge.textContent = '切断';
+        }
+        if (hostSlotManagers[slotIndex]) {
+          hostSlotManagers[slotIndex].connected = false;
+        }
+        if (hostCoordinator) {
+          hostCoordinator.handleDisconnect(`slot_${slotIndex}`);
+        }
+        updateLobbyUI();
+      });
+
+      connMgr.onError((err) => {
+        console.error(`スロット ${slotIndex} 通信エラー:`, err);
+      });
+    }
+
+    async function copySlotOffer(slotIndex) {
+      const btn = document.getElementById(`btn-copy-slot-${slotIndex}`);
+      const text = document.getElementById(`slot-offer-${slotIndex}`).value;
+      await ClipboardController.copyWithFeedback(btn, text);
+    }
+
+    async function copySlotInviteLink(slotIndex) {
+      const btn = document.getElementById(`btn-link-slot-${slotIndex}`);
+      const offerCode = document.getElementById(`slot-offer-${slotIndex}`).value.trim();
+      if (!offerCode) {
+        alert('Offerコードの生成をお待ちください。');
+        return;
+      }
+      let baseUrl = window.location.href.split('#')[0].split('?')[0];
+      if (baseUrl.startsWith('file://')) {
+        baseUrl = 'http://192.168.207.142:8000/';
+      }
+      const inviteUrl = `${baseUrl}#offer=${encodeURIComponent(offerCode)}`;
+      await ClipboardController.copyWithFeedback(btn, inviteUrl);
+    }
+
+    async function pasteSlotAnswer(slotIndex) {
+      const btn = document.getElementById(`btn-paste-slot-${slotIndex}`);
+      const ta = document.getElementById(`slot-answer-${slotIndex}`);
+      await ClipboardController.pasteWithFeedback(btn, ta, () => {
+        connectSlot(slotIndex);
+      });
+    }
+
+    async function connectSlot(slotIndex) {
+      const ta = document.getElementById(`slot-answer-${slotIndex}`);
+      const answerCode = ta.value.trim();
+      if (!answerCode) return;
+
+      const slot = hostSlotManagers[slotIndex];
+      if (slot && slot.connManager) {
+        try {
+          await slot.connManager.applyAnswer(answerCode);
+        } catch (err) {
+          alert('接続確立エラー: ' + err.message);
+        }
+      }
+    }
+
+    function showSlotQR(slotIndex) {
+      const text = document.getElementById(`slot-offer-${slotIndex}`).value.trim();
+      if (text) openQRModal(text);
+    }
+
+    async function handlePasteOffer() {
+      const btn = document.getElementById('btn-paste-offer');
+      const ta = document.getElementById('sdp-offer');
+      await ClipboardController.pasteWithFeedback(btn, ta);
+    }
+
+    async function handleClientCreateAnswer() {
+      const offerCode = document.getElementById('sdp-offer').value.trim();
+      if (!offerCode) {
+        alert('ホストの接続コードを入力または貼り付けてください。');
+        return;
+      }
+
+      const clientName = document.getElementById('client-name').value.trim() || 'ゲスト';
+      const clientId = 'client_' + Math.random().toString(36).substring(2, 9);
+      myPlayerId = clientId;
+      myPlayerName = clientName;
+
+      clientConnManager = new P2PConnectionManager({ peerId: clientId, isHost: false });
+      clientRouter = new ClientMessageRouter(clientId, clientConnManager);
+      setupClientRouterHandlers();
+
+      clientConnManager.onOpen(() => {
+        clientRouter.sendJoin(clientName);
+        showScreen('screen-lobby');
+      });
+
+      clientConnManager.onMessage((msg) => {
+        clientRouter.handleIncoming(msg);
+      });
+
+      clientConnManager.onClose(() => {
+        alert('ホストとの接続が切断されました。トップ画面に戻ります。');
+        showScreen('screen-top');
+        if (clientConnManager) {
+          try { clientConnManager.close(); } catch (_) {}
+          clientConnManager = null;
+        }
+        clientRouter = null;
+        const answerGroup = document.getElementById('client-answer-group');
+        if (answerGroup) answerGroup.style.display = 'none';
+        const sdpAnswer = document.getElementById('sdp-answer');
+        if (sdpAnswer) sdpAnswer.value = '';
+        const readyBtn = document.getElementById('btn-ready');
+        if (readyBtn) {
+          readyBtn.classList.remove('btn-success');
+          readyBtn.classList.add('btn-secondary');
+          readyBtn.textContent = '👍 準備完了 (Ready)';
+        }
+      });
+
+      clientConnManager.onError((err) => {
+        console.error('クライアントP2P通信エラー:', err);
+      });
+
+      try {
+        const answerCode = await clientConnManager.createAnswer(offerCode);
+        document.getElementById('sdp-answer').value = answerCode;
+        document.getElementById('client-answer-group').style.display = 'block';
+      } catch (err) {
+        alert('Answer生成エラー: ' + err.message);
+      }
+    }
+
+    async function handleCopyClientAnswer() {
+      const btn = document.getElementById('btn-copy-code');
+      const text = document.getElementById('sdp-answer').value;
+      await ClipboardController.copyWithFeedback(btn, text);
+    }
+
+    function handleShowAnswerQR() {
+      const text = document.getElementById('sdp-answer').value.trim();
+      if (text) openQRModal(text);
+    }
+
+    function updateLobbyUI() {
+      if (!hostCoordinator) return;
+      renderLobbyMembers(hostCoordinator.getAllPlayersPublic());
+      const startBtn = document.getElementById('btn-start-game');
+      if (startBtn) startBtn.style.display = hostCoordinator.canStartGame() ? 'block' : 'none';
+    }
+
+    function renderLobbyMembers(players) {
+      const listEl = document.getElementById('lobby-player-list');
+      if (!listEl) return;
+      listEl.innerHTML = '';
+      players.forEach(p => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.justifyContent = 'space-between';
+        row.style.alignItems = 'center';
+        row.style.padding = '0.5rem 0.75rem';
+        row.style.background = '#0f172a';
+        row.style.borderRadius = '6px';
+        row.innerHTML = `
+          <span>${p.isHost ? '👑 ' : '👤 '}${escapeHTML(p.name)}</span>
+          <span class="slot-badge ${p.ready ? 'badge-connected' : 'badge-empty'}">
+            ${p.ready ? '✓ Ready' : '待機中'}
+          </span>
+        `;
+        listEl.appendChild(row);
+      });
+    }
+
+    function handleToggleReady() {
+      const readyBtn = document.getElementById('btn-ready');
+      const isReady = readyBtn.classList.toggle('btn-success');
+      readyBtn.classList.toggle('btn-secondary', !isReady);
+      readyBtn.textContent = isReady ? '✓ 準備完了中' : '👍 準備完了 (Ready)';
+
+      if (currentRole === 'host' && hostCoordinator) {
+        // Host inherently ready
+      } else if (clientRouter) {
+        clientRouter.sendReady(isReady);
+      }
+    }
+
+    function handleStartGameClick() {
+      if (hostCoordinator && hostCoordinator.canStartGame()) {
+        hostCoordinator.startGame(BabanukiEngine);
+        myPlayerId = hostCoordinator.hostId;
+        myPlayerName = hostCoordinator.hostName;
+        currentGameRule = hostCoordinator.rule;
+        localHandManager = new LocalHandManager();
+        const { pairs, remaining } = localHandManager.initFromDeal(hostCoordinator.hostHandSlice, currentGameRule);
+        allPlayers = hostCoordinator.getAllPlayersPublic();
+        discardHistory = [];
+        showScreen('screen-play');
+        renderPlayScreen();
+        // Record host initial discard
+        hostCoordinator.handleInitialDiscard(myPlayerId, pairs, remaining.length);
+        if (remaining.length === 0) {
+          showFinishedNotification();
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Gameplay Event Handlers & Handshake
+    // -------------------------------------------------------------------------
+    function setupHostMessageRouterHandlers() {
+      if (!hostMessageRouter) return;
+
+      hostMessageRouter.onHostHover = (index) => {
+        updateMyHandHoverIndicator(index);
+      };
+
+      hostMessageRouter.onHostDrawReq = (drawerId, cardIndex) => {
+        if (!localHandManager) return;
+        const drawnCard = localHandManager.giveCardAt(cardIndex);
+        hostCoordinator.sendTo(drawerId, { type: 'draw_resp', drawerId, card: drawnCard });
+        const remainingCount = localHandManager.getCardCount();
+        hostCoordinator.updatePlayerCardCount(hostCoordinator.hostId, remainingCount);
+        renderMyHand();
+        updateMyHandHoverIndicator(-1);
+        if (remainingCount === 0) {
+          showFinishedNotification();
+        }
+      };
+
+      hostMessageRouter.onHostDrawResp = (fromPeerId, card) => {
+        handleReceivedDrawnCard(card);
+      };
+    }
+
+    function setupClientRouterHandlers() {
+      if (!clientRouter) return;
+
+      clientRouter.onRoomState = (msg) => {
+        allPlayers = msg.players || [];
+        currentGameRule = msg.rule || 1;
+        if (document.getElementById('screen-lobby').classList.contains('active')) {
+          renderLobbyMembers(allPlayers);
+        } else if (document.getElementById('screen-play').classList.contains('active')) {
+          renderPlayerProgress();
+        }
+      };
+
+      clientRouter.onGameStart = (msg) => {
+        currentGameRule = msg.rule;
+        allPlayers = msg.players || [];
+        discardHistory = [];
+        showScreen('screen-play');
+        renderPlayScreen();
+      };
+
+      clientRouter.onDeal = (secretCards) => {
+        localHandManager = new LocalHandManager();
+        const { pairs, remaining } = localHandManager.initFromDeal(secretCards, currentGameRule);
+        renderMyHand();
+        clientRouter.sendInitialDiscard(pairs, remaining.length);
+        if (remaining.length === 0) {
+          showFinishedNotification();
+        }
+      };
+
+      clientRouter.onHover = (index) => {
+        updateMyHandHoverIndicator(index);
+      };
+
+      clientRouter.onDrawReq = (drawerId, cardIndex) => {
+        if (!localHandManager) return;
+        const drawnCard = localHandManager.giveCardAt(cardIndex);
+        clientRouter.sendDrawResp(drawerId, drawnCard);
+        const remainingCount = localHandManager.getCardCount();
+        clientRouter.sendCardCount(remainingCount);
+        renderMyHand();
+        updateMyHandHoverIndicator(-1);
+        if (remainingCount === 0) {
+          showFinishedNotification();
+        }
+      };
+
+      clientRouter.onDrawResp = (card) => {
+        handleReceivedDrawnCard(card);
+      };
+
+      clientRouter.onDiscard = (playerId, pair) => {
+        addDiscardPairToUI(playerId, pair);
+      };
+
+      clientRouter.onTurn = (activePlayerId, targetPlayerId) => {
+        handleTurnUpdate(activePlayerId, targetPlayerId);
+      };
+
+      clientRouter.onFinished = (playerId, rank) => {
+        handlePlayerFinished(playerId, rank);
+      };
+
+      clientRouter.onGameOver = (loserId, rankings) => {
+        handleGameOver(loserId, rankings);
+      };
+    }
+
+    function handleLocalGameEvent(msg) {
+      if (!msg || typeof msg !== 'object') return;
+      switch (msg.type) {
+        case 'game_start':
+          allPlayers = msg.players || [];
+          currentGameRule = msg.rule || 1;
+          discardHistory = [];
+          renderPlayScreen();
+          break;
+        case 'discard':
+          addDiscardPairToUI(msg.playerId, msg.pair);
+          break;
+        case 'turn':
+          handleTurnUpdate(msg.activePlayerId, msg.targetPlayerId);
+          break;
+        case 'finished':
+          handlePlayerFinished(msg.playerId, msg.rank);
+          break;
+        case 'game_over':
+          handleGameOver(msg.loserId, msg.rankings);
+          break;
+        case 'room_state':
+          allPlayers = msg.players || [];
+          if (document.getElementById('screen-play').classList.contains('active')) {
+            renderPlayerProgress();
+          }
+          break;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Core Gameplay Interaction & Turn Engine
+    // -------------------------------------------------------------------------
+    function handleDrawCardClick(targetPlayerId, cardIndex) {
+      if (isDrawingInProgress) return;
+      if (myPlayerId !== currentActivePlayerId) return;
+      if (currentTargetPlayerId !== targetPlayerId) return;
+
+      isDrawingInProgress = true;
+      sendHoverEvent(targetPlayerId, -1);
+
+      if (currentRole === 'host') {
+        hostCoordinator.sendTo(targetPlayerId, {
+          type: 'draw_req',
+          drawerId: hostCoordinator.hostId,
+          cardIndex: cardIndex
+        });
+      } else if (clientRouter) {
+        clientRouter.sendDrawReq(targetPlayerId, cardIndex);
+      }
+    }
+
+    function handleReceivedDrawnCard(drawnCard) {
+      if (!localHandManager) return;
+      const result = localHandManager.receiveDrawnCard(drawnCard, currentGameRule);
+      renderMyHand();
+
+      if (result.isPair) {
+        showToast(`ペア成立！ [${formatCardString(result.discardedPair[0])} & ${formatCardString(result.discardedPair[1])}] を捨てました。`);
+        if (currentRole === 'host') {
+          hostCoordinator.discardHistory.push({ playerId: myPlayerId, pair: result.discardedPair });
+          hostCoordinator.broadcast({ type: 'discard', playerId: myPlayerId, pair: result.discardedPair });
+        } else if (clientRouter) {
+          clientRouter.sendDiscard(result.discardedPair);
+        }
+      } else {
+        showToast(`カード [${formatCardString(drawnCard)}] を手札に加えました。`);
+      }
+
+      const remainingCount = localHandManager.getCardCount();
+      if (currentRole === 'host') {
+        hostCoordinator.updatePlayerCardCount(myPlayerId, remainingCount);
+        if (remainingCount === 0) {
+          showFinishedNotification();
+        }
+        setTimeout(() => {
+          isDrawingInProgress = false;
+          hostCoordinator.advanceTurn();
+        }, 700);
+      } else if (clientRouter) {
+        clientRouter.sendCardCount(remainingCount);
+        if (remainingCount === 0) {
+          showFinishedNotification();
+        }
+        setTimeout(() => {
+          isDrawingInProgress = false;
+          clientRouter.sendTurnDone();
+        }, 700);
+      }
+    }
+
+    function handleTurnUpdate(activePlayerId, targetPlayerId) {
+      currentActivePlayerId = activePlayerId;
+      currentTargetPlayerId = targetPlayerId;
+      isDrawingInProgress = false;
+      renderPlayScreen();
+    }
+
+    function handlePlayerFinished(playerId, rank) {
+      const p = allPlayers.find(x => x.id === playerId);
+      if (p) p.finishRank = rank;
+      if (playerId === myPlayerId) {
+        showFinishedNotification();
+      }
+      renderPlayerProgress();
+    }
+
+    function handleGameOver(loserId, rankings) {
+      showScreen('screen-result');
+      const loser = allPlayers.find(p => p.id === loserId) || { name: 'プレイヤー' };
+      const loserEl = document.getElementById('loser-display');
+      if (loserEl) {
+        loserEl.innerHTML = `
+          <div style="font-size: 2.2rem; margin-bottom: 0.5rem;">💀</div>
+          <strong>Loser (敗北): ${escapeHTML(loser.name)} (Held Joker)</strong>
+          <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 0.4rem;">
+            最後までジョーカーを持っていたため敗北となりました。
+          </div>
+        `;
+      }
+
+      const rankListEl = document.getElementById('ranking-list');
+      if (rankListEl) {
+        rankListEl.innerHTML = '<h3 style="font-size: 1rem; margin-bottom: 0.75rem; color:#94a3b8;">順位結果:</h3>';
+        const sorted = [...(rankings || [])].sort((a, b) => a.rank - b.rank);
+        const medals = { 1: '🥇 1位', 2: '🥈 2位', 3: '🥉 3位' };
+
+        sorted.forEach(r => {
+          const p = allPlayers.find(player => player.id === r.playerId) || { name: r.playerId };
+          const row = document.createElement('div');
+          row.className = 'rank-row';
+          const isLoser = (r.playerId === loserId);
+          const medal = isLoser ? '💀 敗北' : (medals[r.rank] || `Rank ${r.rank}`);
+
+          row.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.6rem 0.8rem;
+            margin-bottom: 0.4rem;
+            border-radius: 6px;
+            background: ${isLoser ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)'};
+            border: 1px solid ${isLoser ? '#ef4444' : 'rgba(255, 255, 255, 0.1)'};
+          `;
+          row.innerHTML = `
+            <span><strong>${medal}</strong>: ${escapeHTML(p.name)}</span>
+            <span style="font-size:0.8rem; color:#9ca3af;">${isLoser ? 'ジョーカー所持' : '勝利'}</span>
+          `;
+          rankListEl.appendChild(row);
+        });
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // UI Rendering & Real-Time Hover Synchronization (目印の丸)
+    // -------------------------------------------------------------------------
+    function renderPlayScreen() {
+      renderMyHand();
+      renderTargetHand();
+      renderPlayerProgress();
+      renderTurnBadge();
+    }
+
+    function renderMyHand() {
+      const container = document.getElementById('my-cards-container');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!localHandManager) return;
+      const cards = localHandManager.getLocalCards();
+
+      if (cards.length === 0) {
+        const finishedEl = document.createElement('div');
+        finishedEl.style.cssText = 'color: #34d399; font-weight: 700; padding: 1rem; width: 100%; text-align: center;';
+        finishedEl.innerHTML = '🎉 手札が0枚になりました！ あなたは上がりです！<br><span style="font-size:0.8rem; color:#9ca3af;">観戦モードでゲームの決着を見守りましょう。</span>';
+        container.appendChild(finishedEl);
+        return;
+      }
+
+      cards.forEach((card) => {
+        const cardEl = createFaceUpCardElement(card);
+        container.appendChild(cardEl);
+      });
+    }
+
+    function createFaceUpCardElement(card) {
+      const el = document.createElement('div');
+      const isJoker = BabanukiEngine.isJoker(card);
+      let colorClass = '';
+      if (isJoker) {
+        colorClass = 'card-joker';
+      } else if (card.suit === 'heart' || card.suit === 'diamond') {
+        colorClass = 'card-heart';
+      }
+
+      el.className = `card card-face-up ${colorClass}`;
+
+      if (isJoker) {
+        el.innerHTML = `
+          <div style="font-size: 0.65rem; font-weight: 800; line-height: 1;">JOKER</div>
+          <div style="font-size: 1.4rem; line-height: 1; margin: auto 0;">🃏</div>
+          <div style="font-size: 0.65rem; font-weight: 800; line-height: 1;">JOKER</div>
+        `;
+      } else {
+        const suitSymbols = { spade: '♠', heart: '♥', diamond: '♦', club: '♣' };
+        const rankLabels = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
+        const symbol = suitSymbols[card.suit] || '';
+        const rankLabel = rankLabels[card.rank] || String(card.rank);
+
+        el.innerHTML = `
+          <div style="display:flex; justify-content:space-between; width:100%; padding: 2px 4px; font-size: 0.75rem; line-height: 1;">
+            <span>${rankLabel}</span>
+            <span>${symbol}</span>
+          </div>
+          <div style="font-size: 1.3rem; line-height: 1; margin: auto 0;">${symbol}</div>
+          <div style="display:flex; justify-content:space-between; width:100%; padding: 2px 4px; font-size: 0.75rem; line-height: 1; transform: rotate(180deg);">
+            <span>${rankLabel}</span>
+            <span>${symbol}</span>
+          </div>
+        `;
+      }
+      return el;
+    }
+
+    function renderTargetHand() {
+      const container = document.getElementById('target-cards-container');
+      const titleEl = document.getElementById('target-player-title');
+      if (!container || !titleEl) return;
+      container.innerHTML = '';
+
+      if (!currentTargetPlayerId) {
+        titleEl.textContent = '相手の手札 (待機中)';
+        return;
+      }
+
+      const targetPlayer = allPlayers.find(p => p.id === currentTargetPlayerId);
+      const activePlayer = allPlayers.find(p => p.id === currentActivePlayerId);
+      const targetName = targetPlayer ? targetPlayer.name : currentTargetPlayerId;
+      const activeName = activePlayer ? activePlayer.name : currentActivePlayerId;
+      const isMyTurn = (myPlayerId === currentActivePlayerId);
+
+      if (isMyTurn) {
+        titleEl.textContent = `🎯 ${escapeHTML(targetName)} の手札 (クリックして1枚引く)`;
+        titleEl.style.color = '#38bdf8';
+      } else {
+        titleEl.textContent = `相手の手札: ${escapeHTML(targetName)} (${escapeHTML(activeName)} が引く手番)`;
+        titleEl.style.color = '#94a3b8';
+      }
+
+      const cardCount = targetPlayer ? (targetPlayer.cardCount || 0) : 0;
+
+      // ANTI-CHEAT MANDATE: Opponent cards in DOM render strictly empty .card-back with data-card-index
+      for (let i = 0; i < cardCount; i++) {
+        const cardEl = document.createElement('div');
+        cardEl.className = 'card card-back';
+        cardEl.setAttribute('data-card-index', String(i));
+
+        if (isMyTurn && !isDrawingInProgress) {
+          cardEl.style.cursor = 'pointer';
+          cardEl.addEventListener('pointerenter', () => {
+            sendHoverEvent(currentTargetPlayerId, i);
+          });
+          cardEl.addEventListener('pointerleave', () => {
+            sendHoverEvent(currentTargetPlayerId, -1);
+          });
+          cardEl.addEventListener('click', () => {
+            handleDrawCardClick(currentTargetPlayerId, i);
+          });
+        } else {
+          cardEl.style.cursor = 'not-allowed';
+        }
+
+        container.appendChild(cardEl);
+      }
+    }
+
+    function sendHoverEvent(targetId, index) {
+      if (lastHoverSentIndex === index) return;
+      lastHoverSentIndex = index;
+
+      if (hoverThrottleTimeout) return;
+      hoverThrottleTimeout = setTimeout(() => {
+        hoverThrottleTimeout = null;
+        if (currentRole === 'host') {
+          hostCoordinator.sendTo(targetId, {
+            type: 'hover',
+            fromId: hostCoordinator.hostId,
+            index: lastHoverSentIndex
+          });
+        } else if (clientRouter) {
+          clientRouter.sendHover(targetId, lastHoverSentIndex);
+        }
+      }, 40);
+    }
+
+    function updateMyHandHoverIndicator(index) {
+      const container = document.getElementById('my-cards-container');
+      if (!container) return;
+      container.querySelectorAll('.indicator-dot').forEach(el => el.remove());
+
+      if (index !== null && index >= 0 && index < container.children.length) {
+        const targetCardEl = container.children[index];
+        if (targetCardEl && targetCardEl.classList.contains('card')) {
+          const dot = document.createElement('div');
+          dot.className = 'indicator-dot pulsating-circle';
+          targetCardEl.appendChild(dot);
+        }
+      }
+    }
+
+    function renderPlayerProgress() {
+      const container = document.getElementById('players-status-list');
+      if (!container) return;
+      container.innerHTML = '';
+
+      allPlayers.forEach(p => {
+        const item = document.createElement('div');
+        const isActive = p.id === currentActivePlayerId;
+        const isTarget = p.id === currentTargetPlayerId;
+        const isMe = p.id === myPlayerId;
+
+        item.className = `player-item ${isActive ? 'active-turn' : ''} ${isTarget ? 'target-turn' : ''}`;
+        item.setAttribute('data-player-id', p.id);
+        item.style.cssText = `
+          padding: 0.6rem 0.75rem;
+          margin-bottom: 0.5rem;
+          border-radius: 8px;
+          background: ${isActive ? 'rgba(37, 99, 235, 0.25)' : (isTarget ? 'rgba(245, 158, 11, 0.18)' : 'rgba(15, 23, 42, 0.6)')};
+          border: 1px solid ${isActive ? '#3b82f6' : (isTarget ? '#f59e0b' : 'rgba(255, 255, 255, 0.08)')};
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        `;
+
+        let statusBadge = '';
+        if (p.finishRank) {
+          statusBadge = `<span class="badge-webrtc" style="background:rgba(16,185,129,0.2); border-color:#10b981; color:#34d399;">🏆 ${p.finishRank}位 上がり</span>`;
+        } else if (isActive) {
+          statusBadge = `<span class="badge-webrtc" style="background:rgba(59,130,246,0.25); border-color:#3b82f6; color:#60a5fa;">👉 手番</span>`;
+        } else if (isTarget) {
+          statusBadge = `<span class="badge-webrtc" style="background:rgba(245,158,11,0.25); border-color:#f59e0b; color:#fbbf24;">🎯 対象</span>`;
+        } else {
+          statusBadge = `<span style="font-size:0.75rem; color:#94a3b8;">待機</span>`;
+        }
+
+        item.innerHTML = `
+          <div>
+            <div style="font-weight: 600; font-size: 0.85rem; color: ${isMe ? '#67e8f9' : '#f8fafc'};">
+              ${p.isHost ? '👑 ' : '👤 '}${escapeHTML(p.name)}${isMe ? ' (あなた)' : ''}
+            </div>
+            <div style="font-size: 0.75rem; color: #94a3b8;">
+              手札: <strong>${p.cardCount !== undefined ? p.cardCount : '?'}</strong> 枚
+            </div>
+          </div>
+          <div>${statusBadge}</div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function renderTurnBadge() {
+      const badge = document.getElementById('turn-indicator-badge');
+      if (!badge) return;
+
+      if (currentActivePlayerId === myPlayerId) {
+        badge.className = 'badge-webrtc';
+        badge.style.background = 'rgba(16, 185, 129, 0.25)';
+        badge.style.borderColor = '#10b981';
+        badge.style.color = '#34d399';
+        badge.textContent = '👉 あなたの手番です (相手の札をクリック)';
+      } else if (currentTargetPlayerId === myPlayerId) {
+        badge.className = 'badge-webrtc';
+        badge.style.background = 'rgba(245, 158, 11, 0.25)';
+        badge.style.borderColor = '#f59e0b';
+        badge.style.color = '#fbbf24';
+        badge.textContent = '🛡️ あなたのカードが引かれています';
+      } else {
+        const activeP = allPlayers.find(p => p.id === currentActivePlayerId);
+        const name = activeP ? activeP.name : '相手';
+        badge.className = 'badge-webrtc';
+        badge.style.background = 'rgba(255, 255, 255, 0.08)';
+        badge.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+        badge.style.color = '#94a3b8';
+        badge.textContent = `⏳ ${escapeHTML(name)} の手番中`;
+      }
+    }
+
+    function addDiscardPairToUI(playerId, pair) {
+      if (!pair || !Array.isArray(pair) || pair.length < 2) return;
+      discardHistory.push({ playerId, pair });
+
+      const listEl = document.getElementById('discard-pairs-list');
+      if (!listEl) return;
+
+      const player = allPlayers.find(p => p.id === playerId);
+      const playerName = player ? player.name : (playerId === 'host_0' ? 'ホスト' : playerId);
+
+      const card1Str = formatCardBrief(pair[0]);
+      const card2Str = formatCardBrief(pair[1]);
+
+      const pairEl = document.createElement('div');
+      pairEl.className = 'discarded-pair';
+      pairEl.innerHTML = `<span style="color: #60a5fa; font-weight: 600;">${escapeHTML(playerName)}:</span> [${card1Str} & ${card2Str}]`;
+      listEl.appendChild(pairEl);
+      listEl.scrollTop = listEl.scrollHeight;
+    }
+
+    function showFinishedNotification() {
+      showToast('🎉 おめでとうございます！ 手札が0枚になり「上がり」となりました！');
+    }
+
+    function showToast(msg) {
+      let toast = document.getElementById('game-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'game-toast';
+        toast.style.cssText = `
+          position: fixed;
+          bottom: 24px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(15, 23, 42, 0.95);
+          border: 1px solid #3b82f6;
+          color: #f8fafc;
+          padding: 0.6rem 1.2rem;
+          border-radius: 9999px;
+          font-size: 0.85rem;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+          z-index: 100;
+          transition: opacity 0.3s, transform 0.3s;
+          pointer-events: none;
+        `;
+        document.body.appendChild(toast);
+      }
+      toast.textContent = msg;
+      toast.style.opacity = '1';
+      clearTimeout(toast._timeout);
+      toast._timeout = setTimeout(() => {
+        toast.style.opacity = '0';
+      }, 3000);
+    }
+
+    function formatCardBrief(card) {
+      if (!card) return '';
+      if (BabanukiEngine.isJoker(card)) return '🃏 JOKER';
+      const symbols = { spade: '♠', heart: '♥', diamond: '♦', club: '♣' };
+      const rankLabels = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
+      const s = symbols[card.suit] || '';
+      const r = rankLabels[card.rank] || String(card.rank);
+      const isRed = (card.suit === 'heart' || card.suit === 'diamond');
+      return `<span style="color: ${isRed ? '#f87171' : '#f8fafc'}; font-weight:bold;">${s}${r}</span>`;
+    }
+
+    function formatCardString(card) {
+      if (!card) return '';
+      if (BabanukiEngine.isJoker(card)) return '🃏 JOKER';
+      const symbols = { spade: '♠', heart: '♥', diamond: '♦', club: '♣' };
+      const rankLabels = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
+      const s = symbols[card.suit] || '';
+      const r = rankLabels[card.rank] || String(card.rank);
+      return `${s}${r}`;
+    }
+
+    function escapeHTML(str) {
+      if (typeof str !== 'string') return String(str || '');
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function openQRModal(text) {
+      const modal = document.getElementById('modal-qr');
+      const canvas = document.getElementById('modal-qr-canvas');
+      PureQRCode.renderToCanvas(canvas, text, { size: 280 });
+      modal.classList.add('active');
+    }
+
+    function closeQRModal() {
+      document.getElementById('modal-qr').classList.remove('active');
+    }
+
+    async function openScannerModal(targetTextareaId) {
+      currentTargetTextareaId = targetTextareaId;
+      const modal = document.getElementById('modal-scanner');
+      const video = document.getElementById('scanner-video');
+      const errorMsg = document.getElementById('scanner-error-msg');
+      errorMsg.style.display = 'none';
+      modal.classList.add('active');
+
+      await scannerManager.startCamera(
+        video,
+        (detectedCode) => {
+          if (currentTargetTextareaId) {
+            const ta = document.getElementById(currentTargetTextareaId);
+            if (ta) ta.value = detectedCode;
+          }
+          closeScannerModal();
+        },
+        (err) => {
+          errorMsg.textContent = err.message || 'カメラ起動に失敗しました。';
+          errorMsg.style.display = 'block';
+        }
+      );
+    }
+
+    function closeScannerModal() {
+      scannerManager.stop();
+      document.getElementById('modal-scanner').classList.remove('active');
+    }
+
+    async function handleFileScan(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const errorMsg = document.getElementById('scanner-error-msg');
+      errorMsg.style.display = 'none';
+
+      await scannerManager.scanImageFile(
+        file,
+        (detectedCode) => {
+          if (currentTargetTextareaId) {
+            const ta = document.getElementById(currentTargetTextareaId);
+            if (ta) ta.value = detectedCode;
+          }
+          closeScannerModal();
+        },
+        (err) => {
+          errorMsg.textContent = err.message || '画像の解析に失敗しました。';
+          errorMsg.style.display = 'block';
+        }
+      );
+    }
+
+    // Auto-detect invite link hash on load
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        const hash = window.location.hash;
+        const search = window.location.search;
+        let offerCode = '';
+        if (hash && hash.includes('offer=')) {
+          offerCode = hash.split('offer=')[1];
+        } else if (search && search.includes('offer=')) {
+          const params = new URLSearchParams(search);
+          offerCode = params.get('offer') || '';
+        }
+
+        if (offerCode) {
+          switchRole('join');
+          const sdpOffer = document.getElementById('sdp-offer');
+          if (sdpOffer) {
+            sdpOffer.value = decodeURIComponent(offerCode);
+            handleClientCreateAnswer();
+          }
+        }
+      } catch (e) {
+        console.warn('Auto invite link parsing failed:', e);
+      }
+    });
+  </script>
+</body>
+</html>
